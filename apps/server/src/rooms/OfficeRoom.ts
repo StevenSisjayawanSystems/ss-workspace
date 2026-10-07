@@ -1,6 +1,8 @@
-import { Room, type Client } from 'colyseus'
+import { Room, ServerError, type Client } from 'colyseus'
 import { schema, t, type SchemaType } from '@colyseus/schema'
 import { QUIET_ZONES, SIT_REACH, SPAWN, nearestWalkable, parseYouTubeId, seatById, standSpot, zoneAt, type ZoneId } from '@guildhouse/shared'
+import { inviteAccepted } from '../config'
+import { iceServers } from '../ice'
 import * as juke from '../jukebox'
 import { cleanColor, cleanText, validMove } from '../rules'
 
@@ -25,6 +27,9 @@ export type Player = SchemaType<typeof Player>
 
 export const OfficeState = schema({ players: t.map(Player), jukebox: juke.Jukebox }, 'OfficeState')
 export type OfficeState = SchemaType<typeof OfficeState>
+
+// Close code sent when the invite code is missing or wrong.
+export const INVITE_REJECTED = 4401
 
 const EMOTES = new Set(['wave', 'heart', 'laugh', 'cheer'])
 
@@ -148,6 +153,12 @@ export class OfficeRoom extends Room {
     return 'YouTube video'
   }
 
+  // The door: with INVITE_CODE set, nobody gets in without it.
+  onAuth(_client: Client, options: Record<string, unknown> = {}) {
+    if (!inviteAccepted(options?.code)) throw new ServerError(INVITE_REJECTED, 'invite')
+    return true
+  }
+
   onJoin(client: Client, options: Record<string, unknown> = {}) {
     const p = new Player()
     // Fan new arrivals out around the spawn tile so they do not stack.
@@ -167,6 +178,8 @@ export class OfficeRoom extends Room {
     this.state.players.set(client.sessionId, p)
     this.lastMove.set(client.sessionId, Date.now())
     client.send('snap', { x: p.x, z: p.z })
+    // Call setup servers, including relay credentials, go only to people who are in.
+    void iceServers().then((servers) => client.send('ice', servers))
   }
 
   onLeave(client: Client) {

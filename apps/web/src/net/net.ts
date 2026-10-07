@@ -73,6 +73,13 @@ let room: Room<any> | null = null
 let sendTimer: ReturnType<typeof setInterval> | undefined
 let clockTimer: ReturnType<typeof setInterval> | undefined
 let retryTimer: ReturnType<typeof setTimeout> | undefined
+let inviteCode = ''
+
+// Close code the server uses when the invite code is missing or wrong.
+const INVITE_REJECTED = 4401
+
+// Servers used to set up calls. The game server replaces these on join, adding a relay when one is configured.
+export const ice: { servers: RTCIceServer[] } = { servers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }] }
 
 function bubble(id: string, text: string, ms: number) {
   const until = Date.now() + ms
@@ -187,16 +194,20 @@ function disconnected(profile: Profile) {
   useNet.setState({ status: 'offline', selfId: null, ids: [], juke: NO_MUSIC, inCall: false, call: [], taken: {} })
   useGame.setState({ seat: null, pendingSeat: null })
   clearTimeout(retryTimer)
-  retryTimer = setTimeout(() => connect(profile), 3000)
+  retryTimer = setTimeout(() => connect(profile, inviteCode), 3000)
 }
 
 // Joins the shared office. If the server is unreachable the office still works solo and we keep retrying.
-export async function connect(profile: Profile) {
-  if (room || useNet.getState().status === 'connecting') return
+// Resolves to 'online', to 'invite' when the server wants an invite code we did not supply, or to 'offline'.
+export async function connect(profile: Profile, code = ''): Promise<'online' | 'invite' | 'offline'> {
+  if (room) return 'online'
+  if (useNet.getState().status === 'connecting') return 'offline'
+  inviteCode = code
+  clearTimeout(retryTimer)
   useNet.setState({ status: 'connecting' })
   try {
     const { robe, trim, hair, hat } = profile.look
-    const joined = await new Client(SERVER_URL).joinOrCreate<any>('office', { name: profile.name, robe, trim, hair, hat })
+    const joined = await new Client(SERVER_URL).joinOrCreate<any>('office', { name: profile.name, robe, trim, hair, hat, code })
     room = joined
     const selfId = joined.sessionId
     useNet.setState({ status: 'online', selfId })
@@ -214,6 +225,9 @@ export async function connect(profile: Profile) {
     })
     joined.send('clock', Date.now())
     clockTimer = setInterval(() => joined.send('clock', Date.now()), 30000)
+    joined.onMessage('ice', (servers: RTCIceServer[]) => {
+      if (Array.isArray(servers) && servers.length) ice.servers = servers
+    })
     joined.onMessage('rtc', (m: { from: string; data: unknown }) => rtcHandler?.(m.from, m.data))
     joined.onMessage('snap', (m: { x: number; z: number }) => useGame.getState().snapTo(m.x, m.z))
     joined.onMessage('chat', (m: ChatLine) => {
@@ -234,8 +248,15 @@ export async function connect(profile: Profile) {
       last = key
       joined.send('move', msg)
     }, SEND_MS)
-  } catch {
+    return 'online'
+  } catch (e) {
+    if ((e as { code?: number })?.code === INVITE_REJECTED) {
+      // Retrying would only be refused again; the title screen asks for the code instead.
+      useNet.setState({ status: 'offline' })
+      return 'invite'
+    }
     disconnected(profile)
+    return 'offline'
   }
 }
 

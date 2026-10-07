@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { loadProfile, useGame } from '../game'
+import { loadInvite, rememberInvite } from '../invite'
 import { HAIRS, ROBES } from '../look'
+import { connect } from '../net/net'
 
 function Swatches({ label, colors, value, onPick }: { label: string; colors: string[]; value: string; onPick: (c: string) => void }) {
   return (
@@ -18,12 +20,29 @@ function Swatches({ label, colors, value, onPick }: { label: string; colors: str
 export function Join() {
   const enter = useGame((s) => s.enter)
   const [profile, setProfile] = useState(loadProfile)
+  const [code, setCode] = useState(loadInvite)
+  // The invite field stays out of the way unless this guildhouse turns out to need one.
+  const [needsCode, setNeedsCode] = useState(false)
+  const [refused, setRefused] = useState(false)
+  const [busy, setBusy] = useState(false)
   const setLook = (patch: Partial<typeof profile.look>) => setProfile((p) => ({ ...p, look: { ...p.look, ...patch } }))
   const name = profile.name.trim()
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if (name) enter({ ...profile, name })
+    if (!name || busy) return
+    setBusy(true)
+    const entering = { ...profile, name }
+    const result = await connect(entering, code.trim())
+    setBusy(false)
+    if (result === 'invite') {
+      setRefused(needsCode || !!code.trim())
+      setNeedsCode(true)
+      return
+    }
+    if (result === 'online') rememberInvite(code.trim())
+    // If the server cannot be reached you still get in, alone, and it keeps trying in the background.
+    enter(entering)
   }
 
   return (
@@ -46,8 +65,25 @@ export function Join() {
           <input type="checkbox" checked={profile.look.hat} onChange={(e) => setLook({ hat: e.target.checked })} />
           <span>Wizard's hat</span>
         </label>
-        <button className="primary" disabled={!name}>
-          Enter
+        {needsCode && (
+          <label className="field">
+            <span>Invite code</span>
+            <input
+              autoFocus
+              autoComplete="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              value={code}
+              onChange={(e) => {
+                setCode(e.target.value)
+                setRefused(false)
+              }}
+            />
+            <div className="field-note">{refused ? 'That code was not accepted.' : 'This guildhouse is invite-only. Ask a member for the code.'}</div>
+          </label>
+        )}
+        <button className="primary" disabled={!name || busy || (needsCode && !code.trim())}>
+          {busy ? 'Entering' : 'Enter'}
         </button>
       </form>
     </div>

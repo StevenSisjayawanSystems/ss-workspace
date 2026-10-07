@@ -6,6 +6,11 @@
     "dev": "pnpm --parallel --filter web --filter server dev",
     "build": "pnpm --filter web build",
     "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "start": "pnpm --filter server start"
+  },
+  "packageManager": "pnpm@9.9.0",
+  "engines": {
+    "node": ">=22"
   }
 }

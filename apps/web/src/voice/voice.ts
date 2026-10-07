@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { onRtc, sendRtc, useNet } from '../net/net'
+import { ice, onRtc, sendRtc, useNet } from '../net/net'
 
 // Room calls are a direct mesh: one WebRTC connection to each other person seated in the room.
 // That needs no media server and suits a handful of people; the game server only relays the handshake.
@@ -72,7 +72,6 @@ export const media = {
   getUserMedia: (c: MediaStreamConstraints) => navigator.mediaDevices.getUserMedia(c),
 }
 
-const ICE: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }]
 
 interface Peer {
   pc: RTCPeerConnection
@@ -113,7 +112,7 @@ function attachLocal(pc: RTCPeerConnection) {
 }
 
 function createPeer(id: string): Peer {
-  const pc = new RTCPeerConnection({ iceServers: ICE })
+  const pc = new RTCPeerConnection({ iceServers: ice.servers })
   const peer: Peer = { pc, stream: new MediaStream(), queued: [] }
   peers.set(id, peer)
   pc.onicecandidate = (e) => e.candidate && sendRtc(id, { candidate: e.candidate.toJSON() })
