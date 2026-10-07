@@ -39,7 +39,7 @@ The deploy log should say `Invite code required to join` and `Call relay (TURN) 
 
 ### 2. Web app on Vercel
 
-1. Add New Project, import this repository. Leave the root directory as the repository root; `vercel.json` supplies the build settings.
+1. Add New Project, import this repository. If Vercel offers a multi-service import, decline it and import the Vite app (`apps/web`) as a single project. Root Directory must be `apps/web`; `apps/web/vercel.json` supplies the build settings.
 2. Add one environment variable: `VITE_SERVER_URL` = `wss://` followed by the Railway domain.
 3. Deploy. Changing `VITE_SERVER_URL` later needs a redeploy, because it is built into the app.
 
