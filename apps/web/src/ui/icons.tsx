@@ -1,0 +1,122 @@
+import type { ReactNode } from 'react'
+
+// One weight of line icon for every control, so the interface reads as a single set.
+const Svg = ({ children }: { children: ReactNode }) => (
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {children}
+  </svg>
+)
+const slash = <path d="M4 4l16 16" />
+const micBody = (
+  <>
+    <rect x="9" y="3" width="6" height="11" rx="3" />
+    <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" />
+  </>
+)
+const camBody = (
+  <>
+    <rect x="3" y="7" width="12" height="10" rx="2" />
+    <path d="M15 11l6-3v8l-6-3z" />
+  </>
+)
+
+export const Icon = {
+  mic: () => <Svg>{micBody}</Svg>,
+  micOff: () => (
+    <Svg>
+      {micBody}
+      {slash}
+    </Svg>
+  ),
+  cam: () => <Svg>{camBody}</Svg>,
+  camOff: () => (
+    <Svg>
+      {camBody}
+      {slash}
+    </Svg>
+  ),
+  expand: () => (
+    <Svg>
+      <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+    </Svg>
+  ),
+  shrink: () => (
+    <Svg>
+      <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+    </Svg>
+  ),
+  leave: () => (
+    <Svg>
+      <path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M15 8l4 4-4 4M19 12H9" />
+    </Svg>
+  ),
+  play: () => (
+    <Svg>
+      <path d="M8 5l11 7-11 7z" />
+    </Svg>
+  ),
+  pause: () => (
+    <Svg>
+      <path d="M8 5v14M16 5v14" />
+    </Svg>
+  ),
+  skip: () => (
+    <Svg>
+      <path d="M5 5l10 7-10 7zM19 5v14" />
+    </Svg>
+  ),
+  plus: () => (
+    <Svg>
+      <path d="M12 5v14M5 12h14" />
+    </Svg>
+  ),
+  close: () => (
+    <Svg>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </Svg>
+  ),
+  note: () => (
+    <Svg>
+      <path d="M9 18V6l10-2v12" />
+      <circle cx="6.5" cy="18" r="2.5" />
+      <circle cx="16.5" cy="16" r="2.5" />
+    </Svg>
+  ),
+  send: () => (
+    <Svg>
+      <path d="M4 12l16-7-6 16-3-6.5z" />
+    </Svg>
+  ),
+  wave: () => (
+    <Svg>
+      <path d="M8 12V6.5a1.5 1.5 0 0 1 3 0V11M11 10.5v-6a1.5 1.5 0 0 1 3 0V11M14 11V6a1.5 1.5 0 0 1 3 0v6M17 10a1.5 1.5 0 0 1 3 0v4a7 7 0 0 1-7 7c-2.6 0-4.3-1.200-5.700-3.400L5 13.800a1.500 1.500 0 0 1 2.500-1.600L8 13" />
+    </Svg>
+  ),
+  heart: () => (
+    <Svg>
+      <path d="M12 20s-7.500-4.600-7.500-10.200A4.200 4.200 0 0 1 12 7.400a4.200 4.200 0 0 1 7.500 2.400C19.500 15.400 12 20 12 20z" />
+    </Svg>
+  ),
+  laugh: () => (
+    <Svg>
+      <circle cx="12" cy="12" r="8.500" />
+      <path d="M8 13.500a4.200 4.200 0 0 0 8 0zM8.500 9.500h.01M15.500 9.500h.01" />
+    </Svg>
+  ),
+  cheer: () => (
+    <Svg>
+      <path d="M12 3.500l2.500 5.300 5.800.8-4.200 4 1 5.700-5.100-2.800-5.100 2.800 1-5.700-4.200-4 5.800-.8z" />
+    </Svg>
+  ),
+  sun: () => (
+    <Svg>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2.500v2.500M12 19v2.500M2.500 12H5M19 12h2.500M5.300 5.300l1.800 1.800M16.900 16.900l1.800 1.800M5.300 18.700l1.800-1.800M16.900 7.100l1.800-1.800" />
+    </Svg>
+  ),
+  moon: () => (
+    <Svg>
+      <path d="M20 14.500A8 8 0 0 1 9.500 4a8 8 0 1 0 10.500 10.500z" />
+    </Svg>
+  ),
+}

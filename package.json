@@ -1,0 +1,11 @@
+{
+  "name": "guildhouse",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --parallel --filter web --filter server dev",
+    "build": "pnpm --filter web build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck"
+  }
+}
