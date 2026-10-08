@@ -9,10 +9,12 @@ export interface Seat {
   // Avatar heading in radians; 0 looks towards +z.
   facing: number
   zone: ZoneId
+  // How far below standing height the sitter rests: 0 for chairs, negative for cushions on the ground.
+  drop: number
 }
 
 // Rooms where sitting does not open a call.
-export const QUIET_ZONES: ZoneId[] = ['library']
+export const QUIET_ZONES: ZoneId[] = ['library', 'meditation']
 
 // Seats in each piece's own frame as [x, z, facing], before the piece is turned and placed.
 const ring = (count: number, radius: number, offset: number): [number, number, number][] =>
@@ -28,6 +30,7 @@ const LOCAL: Partial<Record<Furniture['type'], [number, number, number][]>> = {
   bench: [[-0.45, 0, 0], [0.45, 0, 0]],
   roundTable: ring(6, 1.72, Math.PI / 6),
   table: ring(4, 1.18, Math.PI / 4),
+  meditationCircle: ring(6, 1.65, Math.PI / 6),
   picnic: [[-0.42, 0.78, Math.PI], [0.42, 0.78, Math.PI], [-0.42, -0.78, 0], [0.42, -0.78, 0]],
 }
 
@@ -42,6 +45,7 @@ export const SEATS: Seat[] = FURNITURE.flatMap((f, i) => {
     z: f.z - lx * sin + lz * cos,
     facing: facing + turn,
     zone,
+    drop: f.type === 'meditationCircle' ? -0.3 : 0,
   }))
 })
 

@@ -30,7 +30,7 @@ const DRIFT_SECONDS = 1.2
 const AWAY_VOLUME = 0.3
 
 let api: Promise<void> | undefined
-function loadApi() {
+export function loadApi() {
   api ??= new Promise((resolve) => {
     if (window.YT?.Player) return resolve()
     window.onYouTubeIframeAPIReady = () => resolve()
@@ -59,6 +59,8 @@ export function Jukebox() {
   const error = useNet((s) => s.jukeError)
   const online = useNet((s) => s.status === 'online')
   const inTavern = useGame((s) => s.zone === 'tavern')
+  // The meditation grove plays its own guide, so the jukebox falls silent for whoever is in there.
+  const meditating = useGame((s) => s.zone === 'meditation')
   const open = useGame((s) => s.jukeOpen)
   const setOpen = useGame((s) => s.setJukeOpen)
   const [volume, setVolume] = useState(savedVolume)
@@ -158,14 +160,14 @@ export function Jukebox() {
   }, [ready, juke])
 
   useEffect(() => {
-    if (ready) yt.current?.setVolume(muted ? 0 : volume * (inTavern ? 1 : AWAY_VOLUME))
+    if (ready) yt.current?.setVolume(muted || meditating ? 0 : volume * (inTavern ? 1 : AWAY_VOLUME))
     try {
       localStorage.setItem(VOLUME_KEY, String(volume))
       localStorage.setItem(MUTE_KEY, muted ? '1' : '0')
     } catch {
       // Volume simply will not be remembered.
     }
-  }, [ready, volume, inTavern, muted])
+  }, [ready, volume, inTavern, muted, meditating])
 
   const add = (e: FormEvent) => {
     e.preventDefault()

@@ -25,6 +25,22 @@ export function loadProfile(): Profile {
   return { name: '', look: DEFAULT_LOOK }
 }
 
+const STATUS_KEY = 'guildhouse.status'
+function loadStatus(): string {
+  try {
+    return (localStorage.getItem(STATUS_KEY) ?? '').slice(0, 40)
+  } catch {
+    return ''
+  }
+}
+export function saveStatus(status: string) {
+  try {
+    localStorage.setItem(STATUS_KEY, status)
+  } catch {
+    // Not remembered next time; still applies now.
+  }
+}
+
 interface GameState {
   profile: Profile | null
   enter: (profile: Profile) => void
@@ -39,6 +55,11 @@ interface GameState {
   hoverSeat: string | null
   setHoverSeat: (id: string | null) => void
   jukeOpen: boolean
+  // Whose profile card is open (a session id, or 'self'), and whether the bulletin board is open.
+  profileOf: string | null
+  boardOpen: boolean
+  // What you are up to, shown to others. Empty means nothing in particular.
+  status: string
   setJukeOpen: (open: boolean) => void
   // Incremented when the server moves us, so any route in progress is dropped.
   snaps: number
@@ -64,6 +85,9 @@ export const useGame = create<GameState>((set, get) => ({
   hoverSeat: null,
   setHoverSeat: (hoverSeat) => set({ hoverSeat }),
   jukeOpen: false,
+  profileOf: null,
+  boardOpen: false,
+  status: loadStatus(),
   setJukeOpen: (jukeOpen) => set({ jukeOpen }),
   snaps: 0,
   snapTo: (x, z) => {

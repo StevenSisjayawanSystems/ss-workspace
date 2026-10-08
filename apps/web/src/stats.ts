@@ -28,12 +28,25 @@ interface StatsState {
 }
 export const useStats = create<StatsState>(() => ({ progress: load(), toast: null }))
 
+// The headline numbers other people can see on your profile.
 export interface Standing {
   level: number
   totalSeconds: number
   streak: number
+  callSeconds: number
+  pomodoros: number
+  messages: number
+  days: number
 }
-export const standing = (p = useStats.getState().progress): Standing => ({ level: levelOf(xpOf(p)).level, totalSeconds: Math.floor(p.seconds), streak: p.streak })
+export const standing = (p = useStats.getState().progress): Standing => ({
+  level: levelOf(xpOf(p)).level,
+  totalSeconds: Math.floor(p.seconds),
+  streak: p.streak,
+  callSeconds: Math.floor(p.callSeconds),
+  pomodoros: p.pomodoros,
+  messages: p.messages,
+  days: p.days,
+})
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined
 export function announce(title: string, detail: string) {

@@ -7,6 +7,8 @@ export const config = {
   port: Number(env('PORT') ?? 2567),
   // When set, joining requires this code. Leave unset only for local development.
   inviteCode: env('INVITE_CODE'),
+  // Folder for the few things kept across restarts (bulletin board notes). Point it at a mounted volume in production.
+  dataDir: env('DATA_DIR'),
   turn: {
     cloudflareKeyId: env('CLOUDFLARE_TURN_KEY_ID'),
     cloudflareApiToken: env('CLOUDFLARE_TURN_API_TOKEN'),

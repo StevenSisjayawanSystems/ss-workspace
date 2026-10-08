@@ -28,7 +28,9 @@ export function Chat({ docked = false }: { docked?: boolean }) {
   useEffect(() => {
     if (!active) return
     const key = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' && document.activeElement !== input.current) {
+      // Enter inside any other field or on a button belongs to that control.
+      const busy = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLButtonElement
+      if (e.key === 'Enter' && !busy) {
         e.preventDefault()
         input.current?.focus()
       }

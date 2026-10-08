@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
-import { QUIET_ZONES, seatById } from '@guildhouse/shared'
-import { joinCallIn, remotes, ringPerson, useNet } from '../net/net'
+import { seatById } from '@guildhouse/shared'
+import { useGame } from '../game'
+import { remotes, useNet } from '../net/net'
 import { Avatar } from './Avatar'
 import { Label } from './Label'
 
@@ -11,7 +12,7 @@ function RemoteAvatar({ id }: { id: string }) {
   const moving = useRef(false)
   const seated = useRef(false)
   const bubble = useNet((s) => s.bubbles[id]?.text)
-  const rank = useNet((s) => s.ranks[id])
+  const status = useNet((s) => s.statuses[id])
   const [hover, setHover] = useState(false)
   const info = remotes.get(id)
 
@@ -31,17 +32,13 @@ function RemoteAvatar({ id }: { id: string }) {
     r.facing += turn * Math.min(1, dt * 12)
     seated.current = !!r.seat
     moving.current = !r.seat && (r.moving || gap > 0.08)
-    group.current.position.set(r.x, 0, r.z)
+    group.current.position.set(r.x, THREE.MathUtils.damp(group.current.position.y, seatById(r.seat)?.drop ?? 0, 9, dt), r.z)
     group.current.rotation.y = r.facing
   })
 
   if (!info) return null
 
-  // Clicking a person calls them over, or takes you to the call they are already in.
-  const theirCall = () => {
-    const seat = seatById(remotes.get(id)?.seat ?? '')
-    return seat && !QUIET_ZONES.includes(seat.zone) ? seat.zone : undefined
-  }
+  // Clicking a person opens their profile, where you can call them or join their call.
   const over = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation()
     setHover(true)
@@ -53,19 +50,16 @@ function RemoteAvatar({ id }: { id: string }) {
   }
   const click = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation()
-    if (e.delta > 8) return
-    const zone = theirCall()
-    if (zone) joinCallIn(zone)
-    else ringPerson(id)
+    if (e.delta <= 8) useGame.setState({ profileOf: id })
   }
 
   return (
     <group ref={group} position={[info.x, 0, info.z]}>
-      <Avatar name={info.name} rank={rank} look={info.look} moving={moving} seated={seated} bubble={bubble} />
+      <Avatar name={info.name} status={status} look={info.look} moving={moving} seated={seated} bubble={bubble} />
       <mesh position={[0, 0.7, 0]} visible={false} onPointerOver={over} onPointerOut={out} onClick={click}>
         <cylinderGeometry args={[0.34, 0.34, 1.4, 10]} />
       </mesh>
-      {hover && !bubble && <Label text={theirCall() ? `Join ${info.name}'s call` : `Call ${info.name}`} y={info.look.hat ? 2.08 : 1.82} />}
+      {hover && !bubble && <Label text="View profile" y={info.look.hat ? 2.08 : 1.82} />}
     </group>
   )
 }

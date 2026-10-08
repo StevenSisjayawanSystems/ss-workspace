@@ -115,7 +115,7 @@ describe('office room', () => {
     expect(players(b)[a.sessionId].level).toBe(1)
     a.send('progress', { level: 4.7, totalSeconds: 7260, streak: -3 })
     await wait(200)
-    expect(players(b)[a.sessionId]).toMatchObject({ level: 4, totalSeconds: 7260, streak: 0 })
+    expect(players(b)[a.sessionId]).toMatchObject({ level: 4, totalSeconds: 7260, streak: 0, pomodoros: 0 })
 
     // Ringing: relayed to the one person with the caller's name and room; quiet rooms cannot be rung from.
     const rings: any[] = []
@@ -141,6 +141,18 @@ describe('office room', () => {
     b.send('pomo:stop')
     await wait(200)
     expect(a.state.pomodoro.phase).toBe('idle')
+
+    // Bulletin board and status are shared; a note can be taken down by anyone.
+    a.send('note:add', { text: '  Standup at 10  ', color: '#9fd0c4' })
+    a.send('note:add', { text: '', color: 'red' })
+    a.send('status', '  Focusing\u0000 ')
+    await wait(200)
+    expect(b.state.notes.length).toBe(1)
+    expect(b.state.notes[0]).toMatchObject({ text: 'Standup at 10', author: 'Ada', color: '#9fd0c4' })
+    expect(players(b)[a.sessionId].status).toBe('Focusing')
+    b.send('note:remove', b.state.notes[0].id)
+    await wait(200)
+    expect(a.state.notes.length).toBe(0)
 
     const errors: string[] = []
     a.onMessage('juke:error', (m: string) => errors.push(m))

@@ -1,9 +1,11 @@
 import { useEffect } from 'react'
 import { useGame } from './game'
 import { Jukebox } from './music/Jukebox'
+import { Meditation } from './music/Meditation'
 import { sendProgress, useNet } from './net/net'
 import { Scene } from './scene/Scene'
 import { startStats } from './stats'
+import { Board } from './ui/Board'
 import { CallBar } from './ui/CallBar'
 import { Chat } from './ui/Chat'
 import { Hud } from './ui/Hud'
@@ -28,7 +30,9 @@ export function App() {
           <Hud />
           <Chat />
           <Jukebox />
+          <Meditation />
           <CallBar />
+          <Board />
           {touch && <Joystick />}
         </>
       ) : (

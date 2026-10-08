@@ -1,7 +1,7 @@
 import { Client, type Room } from '@colyseus/sdk'
 import { create } from 'zustand'
 import { QUIET_ZONES, SEATS, roomById, seatById, standSpot, type Seat, type ZoneId } from '@guildhouse/shared'
-import { inReach, player, useGame, walkToSeat, type Profile } from '../game'
+import { inReach, player, saveStatus, useGame, walkToSeat, type Profile } from '../game'
 import { DEFAULT_LOOK, type AvatarLook } from '../look'
 import { bell, ringtone } from '../sound'
 import { announce, count, standing, type Standing } from '../stats'
@@ -18,6 +18,11 @@ export interface Remote {
   level: number
   totalSeconds: number
   streak: number
+  callSeconds: number
+  pomodoros: number
+  messages: number
+  days: number
+  status: string
   x: number
   z: number
   facing: number
@@ -75,7 +80,18 @@ export interface Ring {
   zone: ZoneId
 }
 
+export interface NoteItem {
+  id: string
+  text: string
+  author: string
+  color: string
+  at: number
+}
+
 interface NetState {
+  // Bulletin board notes, oldest first; and what each other person says they are up to.
+  notes: NoteItem[]
+  statuses: Record<string, string>
   pomo: PomoState
   ringing: Ring | null
   // True while we are seated in a room that has a call; `call` lists the others seated in that room.
@@ -97,7 +113,7 @@ interface NetState {
 
 const NO_MUSIC: JukeState = { queue: [], startedAt: 0, paused: false, pausedAt: 0 }
 
-export const useNet = create<NetState>(() => ({ pomo: NO_TIMER, ringing: null, inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
+export const useNet = create<NetState>(() => ({ notes: [], statuses: {}, pomo: NO_TIMER, ringing: null, inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
 
 const SEND_MS = 80
 const CONNECT_TIMEOUT_MS = 8000
@@ -172,8 +188,10 @@ function syncCall() {
   const call: string[] = []
   const taken: Record<string, string> = {}
   const ranks: Record<string, number> = {}
+  const statuses: Record<string, string> = {}
   for (const r of remotes.values()) {
     ranks[r.id] = r.level
+    if (r.status) statuses[r.id] = r.status
     if (!r.seat) continue
     taken[r.seat] = r.name
     if (inCall && seatById(r.seat)?.zone === mySeat!.zone) call.push(r.id)
@@ -185,7 +203,18 @@ function syncCall() {
   if (!sameList(s.call, call)) patch.call = call
   if (JSON.stringify(s.taken) !== JSON.stringify(taken)) patch.taken = taken
   if (JSON.stringify(s.ranks) !== JSON.stringify(ranks)) patch.ranks = ranks
+  if (JSON.stringify(s.statuses) !== JSON.stringify(statuses)) patch.statuses = statuses
   if (Object.keys(patch).length) useNet.setState(patch)
+}
+
+let notesKey = ''
+function syncNotes(state: any) {
+  const notes: NoteItem[] = []
+  state.notes?.forEach((n: any) => notes.push({ id: n.id, text: n.text, author: n.author, color: n.color, at: n.at }))
+  const key = JSON.stringify(notes)
+  if (key === notesKey) return
+  notesKey = key
+  useNet.setState({ notes })
 }
 
 let pomoKey = ''
@@ -226,6 +255,11 @@ function syncPlayers(state: any, selfId: string) {
       r.level = p.level
       r.totalSeconds = p.totalSeconds
       r.streak = p.streak
+      r.callSeconds = p.callSeconds
+      r.pomodoros = p.pomodoros
+      r.messages = p.messages
+      r.days = p.days
+      r.status = p.status
     } else {
       remotes.set(id, {
         id,
@@ -237,6 +271,11 @@ function syncPlayers(state: any, selfId: string) {
         level: p.level,
         totalSeconds: p.totalSeconds,
         streak: p.streak,
+        callSeconds: p.callSeconds,
+        pomodoros: p.pomodoros,
+        messages: p.messages,
+        days: p.days,
+        status: p.status,
         x: p.x, z: p.z, facing: p.facing,
         tx: p.x, tz: p.z, tfacing: p.facing,
         moving: p.moving,
@@ -255,6 +294,7 @@ function disconnected(profile: Profile) {
   clearInterval(clockTimer)
   jukeKey = ''
   pomoKey = ''
+  notesKey = ''
   ringtone.stop()
   room = null
   remotes.clear()
@@ -276,7 +316,7 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
     const { robe, trim, hair, hat } = profile.look
     // An unreachable server can leave the browser waiting a long time; give up after a few seconds
     // so the title screen never hangs, and drop the connection if it turns up late.
-    const attempt = new Client(SERVER_URL).joinOrCreate<any>('office', { name: profile.name, robe, trim, hair, hat, code, ...standing() })
+    const attempt = new Client(SERVER_URL).joinOrCreate<any>('office', { name: profile.name, robe, trim, hair, hat, code, status: useGame.getState().status, ...standing() })
     const joined = await Promise.race([
       attempt,
       new Promise<never>((_, reject) =>
@@ -298,6 +338,7 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
       syncPlayers(state, selfId)
       syncJukebox(state)
       syncPomodoro(state)
+      syncNotes(state)
     })
     joined.onMessage('clock', (m: { t0: number; now: number }) => {
       clockOffset = m.now - (m.t0 + Date.now()) / 2
@@ -440,6 +481,19 @@ export function answerRing(accept: boolean) {
   if (accept) joinCallIn(ring.zone)
 }
 
+export const board = {
+  add: (text: string, color: string) => room?.send('note:add', { text, color }),
+  remove: (id: string) => room?.send('note:remove', id),
+}
+
+// Tells everyone what you are up to; an empty string clears it.
+export function setStatus(status: string) {
+  const clean = status.trim().slice(0, 40)
+  useGame.setState({ status: clean })
+  saveStatus(clean)
+  room?.send('status', clean)
+}
+
 export const pomodoro = {
   start: (focusMin: number, breakMin: number) => room?.send('pomo:start', { focusMin, breakMin }),
   timer: (minutes: number) => room?.send('pomo:timer', { minutes }),
@@ -478,7 +532,7 @@ export const jukebox = {
   duration: (id: string, duration: number) => room?.send('juke:duration', { id, duration }),
 }
 
-if (import.meta.env.DEV) Object.assign((window as any).__game, { net: { useNet, remotes, jukebox, sendChat, sendEmote, requestSit, standUp, connect, ringPerson, answerRing, pomodoro } })
+if (import.meta.env.DEV) Object.assign((window as any).__game, { net: { useNet, remotes, jukebox, sendChat, sendEmote, requestSit, standUp, connect, ringPerson, answerRing, pomodoro, board, setStatus } })
 
 // This module owns a live connection, so a hot update cannot be applied in place.
 import.meta.hot?.dispose(() => {

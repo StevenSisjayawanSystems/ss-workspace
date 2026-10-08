@@ -51,6 +51,10 @@ With Cloudflare: in the dashboard open Realtime, TURN Server, create a TURN key,
 
 Any other provider works through `TURN_URLS`, `TURN_USERNAME` and `TURN_CREDENTIAL`.
 
+### Keeping bulletin board notes
+
+Notes are saved to a small file. Railway's disk is wiped on every deploy, so to keep them: on the server service add a Volume mounted at `/data`, then set the variable `DATA_DIR=/data`. The deploy log confirms with `Notes are kept in /data`. If it instead warns that notes could not be saved, the volume is not writable by the server's user; setting `RAILWAY_RUN_UID=0` on the service is the usual fix.
+
 ### Inviting people
 
 Send the link with the code in the fragment, which browsers do not send to servers:

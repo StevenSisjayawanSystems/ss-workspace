@@ -6,6 +6,7 @@ import { clockText, localHour, skyAt } from '../time'
 import { useStats } from '../stats'
 import { Icon } from './icons'
 import { Pomodoro } from './Pomodoro'
+import { Profile } from './Profile'
 import { Ring } from './Ring'
 import { Roster } from './Roster'
 
@@ -80,6 +81,19 @@ function Clock() {
   )
 }
 
+function NotesPill() {
+  const count = useNet((s) => s.notes.length)
+  const online = useNet((s) => s.status === 'online')
+  if (!online) return null
+  return (
+    <button className="notes-pill" title="Open the bulletin board" onClick={() => useGame.setState({ boardOpen: true })}>
+      <Icon.pin />
+      <span>Board</span>
+      {count > 0 && <i>{count}</i>}
+    </button>
+  )
+}
+
 export function Hud() {
   const zone = useGame((s) => s.zone)
   const room = roomById(zone)
@@ -110,6 +124,8 @@ export function Hud() {
       <Clock />
       <Pomodoro />
       <Ring />
+      <Profile />
+      <NotesPill />
       <MiniMap />
       <div className="hint">{touch ? 'Tap to walk · pinch to zoom' : 'Click to walk · WASD to move · scroll to zoom'}</div>
     </div>

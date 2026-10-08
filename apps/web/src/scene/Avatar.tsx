@@ -18,7 +18,7 @@ const TUFTS: [number, number, number, number, number, number][] = [
 ]
 
 // A young storybook adventurer built from primitives. Faces +z; the parent group places and turns it.
-export function Avatar({ look = DEFAULT_LOOK, name, moving, seated, bubble, rank }: { look?: AvatarLook; name?: string; rank?: number; moving: RefObject<boolean>; seated?: RefObject<boolean>; bubble?: string }) {
+export function Avatar({ look = DEFAULT_LOOK, name, moving, seated, bubble, status }: { look?: AvatarLook; name?: string; status?: string; moving: RefObject<boolean>; seated?: RefObject<boolean>; bubble?: string }) {
   const body = useRef<THREE.Group>(null!)
   const legL = useRef<THREE.Group>(null!)
   const legR = useRef<THREE.Group>(null!)
@@ -162,7 +162,7 @@ export function Avatar({ look = DEFAULT_LOOK, name, moving, seated, bubble, rank
         </group>
       </group>
       </group>
-      {name && <Label text={rank && rank > 1 ? `${name} · Lv ${rank}` : name} y={look.hat ? 1.66 : 1.4} />}
+      {name && <Label text={status ? `${name} · ${status}` : name} y={look.hat ? 1.66 : 1.4} />}
       {bubble && <Label text={bubble} y={look.hat ? 2.08 : 1.82} bubble />}
     </group>
   )

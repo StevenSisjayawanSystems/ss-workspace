@@ -4,8 +4,7 @@ import * as THREE from 'three'
 import { GRID_H, GRID_W, WALK_SPEED, circleFree, route, seatById, zoneAt, type Point } from '@guildhouse/shared'
 import { inReach, input, player, useGame } from '../game'
 import type { AvatarLook } from '../look'
-import { addDistance, useStats } from '../stats'
-import { levelOf, xpOf } from '@guildhouse/shared'
+import { addDistance } from '../stats'
 import { requestSit, standUp, useNet } from '../net/net'
 import { Avatar } from './Avatar'
 import { glow } from './toon'
@@ -26,12 +25,13 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
   const held = useRef(new Set<string>())
   const walkTarget = useGame((s) => s.walkTarget)
   const snaps = useGame((s) => s.snaps)
-  const rank = useStats((s) => levelOf(xpOf(s.progress)).level)
+  const status = useGame((s) => s.status)
   const bubble = useNet((s) => (s.selfId ? s.bubbles[s.selfId]?.text : undefined))
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (e.code in KEYS && !(e.target instanceof HTMLInputElement)) held.current.add(e.code)
+      const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement
+      if (e.code in KEYS && !typing) held.current.add(e.code)
     }
     const up = (e: KeyboardEvent) => held.current.delete(e.code)
     const clear = () => held.current.clear()
@@ -117,7 +117,9 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
       requestSit(game.pendingSeat)
       useGame.setState({ pendingSeat: null })
     }
-    group.current.position.set(player.x, 0, player.z)
+    // Cushions sit on the ground, so the sitter eases down further than on a chair.
+    const drop = seatById(useGame.getState().seat ?? '')?.drop ?? 0
+    group.current.position.set(player.x, THREE.MathUtils.damp(group.current.position.y, drop, 9, dt), player.z)
     group.current.rotation.y = player.facing
 
     const zone = zoneAt(Math.round(player.x), Math.round(player.z))
@@ -145,7 +147,7 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
         <ringGeometry args={[0.22, 0.3, 24]} />
       </mesh>
       <group ref={group}>
-        <Avatar name={name} rank={rank} look={look} moving={moving} seated={seated} bubble={bubble} />
+        <Avatar name={name} status={status} look={look} moving={moving} seated={seated} bubble={bubble} />
       </group>
     </>
   )

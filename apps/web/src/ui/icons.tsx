@@ -79,6 +79,16 @@ export const Icon = {
       <rect x="6.500" y="6.500" width="11" height="11" rx="1.500" />
     </Svg>
   ),
+  restart: () => (
+    <Svg>
+      <path d="M4.500 12a7.500 7.500 0 1 0 2.300-5.400M4.500 4.500v4h4" />
+    </Svg>
+  ),
+  pin: () => (
+    <Svg>
+      <path d="M9 4h6l-1 5 3 3v2H7v-2l3-3zM12 14v6" />
+    </Svg>
+  ),
   expand: () => (
     <Svg>
       <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />

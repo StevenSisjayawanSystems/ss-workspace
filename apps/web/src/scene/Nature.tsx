@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { GRID_H, GRID_W, isWalkable, tileAt, zoneAt } from '@guildhouse/shared'
+import { GRID_H, GRID_W, ROOMS, isWalkable, tileAt, zoneAt } from '@guildhouse/shared'
 import { sky } from '../time'
 
 function rng(seed: number) {
@@ -12,6 +12,8 @@ function rng(seed: number) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }
+
+const OUTDOORS = new Set<string>(ROOMS.filter((r) => r.outdoor).map((r) => r.id))
 
 // One tuft: three tapered blades fanned around the centre, dark at the root and sunlit at the tip.
 function tuftGeometry() {
@@ -77,7 +79,7 @@ export function Grass({ count = 24000 }: { count?: number }) {
       const z = -14 + r() * (GRID_H + 28)
       const tx = Math.round(x), tz = Math.round(z)
       const tile = tileAt(tx, tz)
-      const garden = zoneAt(tx, tz) === 'garden'
+      const garden = OUTDOORS.has(zoneAt(tx, tz) ?? '')
       if (tile === 'wall' || tile === 'door' || tile === 'hedge') continue
       if (onPath(x, z, 0.75)) continue
       if (tile === 'floor' && (!garden || !isWalkable(tx, tz))) continue

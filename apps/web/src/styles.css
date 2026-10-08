@@ -1671,3 +1671,459 @@ body:has(.call.focus) .jukebox:not(.open) .juke-tune {
   flex: 0 0 100%;
   margin-top: 0;
 }
+
+/* Meditation grove: the guided session, playing for you alone */
+.meditation[hidden] {
+  display: none;
+}
+
+.meditation {
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 12px;
+  background: var(--panel);
+  border-radius: 3px;
+  box-shadow: var(--edge);
+}
+
+.meditation-video {
+  flex: none;
+  width: 128px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--teal-ink);
+  border: 1px solid var(--gold-deep);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.meditation-video iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.meditation-text {
+  min-width: 0;
+  margin-right: 4px;
+}
+
+.meditation-text b,
+.meditation-text span {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meditation-text b {
+  font: 700 13px var(--display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.meditation-text span {
+  font-size: 12px;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The guide takes the hint's place, and sits above the quiet-room notice when you are seated. */
+body:has(.meditation:not([hidden])) .hint {
+  display: none;
+}
+
+body:has(.meditation:not([hidden])) .call.quiet {
+  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 104px);
+}
+
+@media (pointer: coarse) {
+  .meditation {
+    left: auto;
+    right: max(16px, env(safe-area-inset-right));
+    transform: none;
+    bottom: calc(max(16px, env(safe-area-inset-bottom)) + 150px);
+  }
+
+  .meditation-video {
+    width: 96px;
+  }
+}
+
+/* Board pill, next to the timer */
+.notes-pill {
+  position: absolute;
+  top: calc(max(16px, env(safe-area-inset-top)) + 68px);
+  left: calc(max(14px, env(safe-area-inset-left)) + 118px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px 4px 9px;
+  font-size: 13px;
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+  border-radius: 999px;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.pomo-pill:not(.idle) ~ .notes-pill {
+  left: calc(max(14px, env(safe-area-inset-left)) + 150px);
+}
+
+.notes-pill:hover {
+  border-color: var(--gold);
+}
+
+.notes-pill svg {
+  width: 15px;
+  height: 15px;
+  color: var(--gold);
+}
+
+.notes-pill i {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--gold);
+}
+
+/* Bulletin board */
+.board-scrim {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(8, 13, 22, 0.6);
+  z-index: 35;
+}
+
+.board {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  max-height: min(680px, 100%);
+  padding: 16px;
+  background: var(--panel);
+  border-radius: 3px;
+  box-shadow: var(--edge);
+}
+
+.board-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font: 700 13px var(--display);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.board-new {
+  margin-top: 12px;
+}
+
+.board-new textarea {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  font: inherit;
+  color: inherit;
+  resize: none;
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+  border-radius: 3px;
+  outline: none;
+}
+
+.board-new textarea:focus {
+  border-color: var(--cream);
+}
+
+.board-new-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.board-new-row > span {
+  margin-left: auto;
+  font-size: 12px;
+  color: #7f8aa0;
+  font-variant-numeric: tabular-nums;
+}
+
+.board-colors {
+  display: flex;
+  gap: 7px;
+}
+
+.board-colors button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(243, 234, 214, 0.5);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.board-colors button.on {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.board-notes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+  overflow-y: auto;
+}
+
+.board-empty {
+  grid-column: 1 / -1;
+  padding: 28px 0;
+  text-align: center;
+  color: #7f8aa0;
+}
+
+.note {
+  display: flex;
+  flex-direction: column;
+  min-height: 110px;
+  padding: 12px 12px 8px;
+  color: #1c1a17;
+  border-radius: 2px;
+}
+
+.note p {
+  flex: 1;
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.note footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11.500px;
+  color: rgba(28, 26, 23, 0.7);
+}
+
+.note footer button {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  color: rgba(28, 26, 23, 0.7);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.note footer button:hover {
+  color: #1c1a17;
+}
+
+.note footer svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* Profile card */
+.profile {
+  position: absolute;
+  top: 50%;
+  right: max(16px, env(safe-area-inset-right));
+  transform: translateY(-50%);
+  width: min(300px, calc(100vw - 32px));
+  padding: 16px;
+  background: var(--panel);
+  border-radius: 3px;
+  box-shadow: var(--edge);
+  pointer-events: auto;
+  z-index: 3;
+}
+
+.profile > .icon-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+.profile-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.profile-initial {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  font: 700 22px var(--display);
+  color: var(--teal-ink);
+  background: var(--gold);
+  border-radius: 50%;
+}
+
+.profile-top b {
+  display: block;
+  font-size: 17px;
+}
+
+.profile-top span {
+  font-size: 13px;
+  color: var(--gold);
+}
+
+.profile-where {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #b9c2d2;
+}
+
+.profile-where em {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  font-style: normal;
+  color: var(--gold);
+}
+
+.profile-where svg {
+  width: 13px;
+  height: 13px;
+}
+
+.profile-rank {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(216, 178, 94, 0.18);
+}
+
+.profile dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+.profile dt {
+  font-size: 11px;
+  color: #b9c2d2;
+}
+
+.profile dd {
+  margin: 0;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.profile-note {
+  margin: 10px 0 0;
+  font-size: 11.500px;
+  line-height: 1.45;
+  color: #9aa6ba;
+}
+
+.profile-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 9px;
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--teal-ink);
+  background: var(--gold);
+  border: 0;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.profile-action svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* Roster additions */
+.roster-open {
+  flex: none;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.roster-who {
+  cursor: pointer;
+}
+
+.status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.status-chips button {
+  padding: 4px 10px;
+  font-size: 12px;
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.status-chips button.on {
+  color: var(--teal-ink);
+  background: var(--gold);
+  border-color: var(--gold);
+  font-weight: 800;
+}
+
+.status-custom input {
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+  border-radius: 999px;
+  outline: none;
+}
+
+.status-custom + .roster-head {
+  margin-top: 16px;
+}
+
+.status-custom input:focus {
+  border-color: var(--cream);
+}
+
+@media (pointer: coarse) {
+  .notes-pill {
+    top: calc(max(16px, env(safe-area-inset-top)) + 144px);
+  }
+}

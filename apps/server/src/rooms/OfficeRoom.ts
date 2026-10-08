@@ -1,7 +1,8 @@
 import { Room, ServerError, type Client } from 'colyseus'
 import { schema, t, type SchemaType } from '@colyseus/schema'
 import { QUIET_ZONES, ROOMS, SIT_REACH, SPAWN, nearestWalkable, parseYouTubeId, seatById, standSpot, zoneAt, type ZoneId } from '@guildhouse/shared'
-import { inviteAccepted } from '../config'
+import { config, inviteAccepted } from '../config'
+import { MAX_NOTES, MAX_NOTE_LENGTH, NOTE_COLORS, Note, NoteStore, type SavedNote } from '../notes'
 import { iceServers } from '../ice'
 import * as juke from '../jukebox'
 import * as pomo from '../pomodoro'
@@ -27,12 +28,18 @@ export const Player = schema(
     level: t.number(),
     totalSeconds: t.number(),
     streak: t.number(),
+    callSeconds: t.number(),
+    pomodoros: t.number(),
+    messages: t.number(),
+    days: t.number(),
+    // What they are up to right now, in their own words: 'Focusing', 'Back in 5'...
+    status: t.string(),
   },
   'Player',
 )
 export type Player = SchemaType<typeof Player>
 
-export const OfficeState = schema({ players: t.map(Player), jukebox: juke.Jukebox, pomodoro: pomo.Pomodoro }, 'OfficeState')
+export const OfficeState = schema({ players: t.map(Player), jukebox: juke.Jukebox, pomodoro: pomo.Pomodoro, notes: t.array(Note) }, 'OfficeState')
 export type OfficeState = SchemaType<typeof OfficeState>
 
 // Close code sent when the invite code is missing or wrong.
@@ -46,6 +53,7 @@ export class OfficeRoom extends Room {
   private lastMove = new Map<string, number>()
   private lastChat = new Map<string, number>()
   private lastRing = new Map<string, number>()
+  private store = new NoteStore(config.dataDir)
   private adds: Promise<void> = Promise.resolve()
 
   onCreate() {
@@ -101,6 +109,37 @@ export class OfficeRoom extends Room {
       if (!from || !to || !from.seat || !to.seat || from.zone !== to.zone) return
       if (QUIET_ZONES.includes(from.zone as ZoneId)) return
       this.clients.find((c) => c.sessionId === msg.to)?.send('rtc', { from: client.sessionId, data: msg.data })
+    })
+
+    // Bulletin board
+    for (const saved of this.store.load()) this.state.notes.push(this.toNote(saved))
+    this.onMessage('note:add', (client: Client, m: { text?: unknown; color?: unknown }) => {
+      const p = this.state.players.get(client.sessionId)
+      const text = cleanText(m?.text, MAX_NOTE_LENGTH)
+      if (!p || !text) return
+      while (this.state.notes.length >= MAX_NOTES) this.state.notes.shift()
+      const now = Date.now()
+      this.state.notes.push(
+        this.toNote({
+          id: `${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+          text,
+          author: p.name,
+          color: NOTE_COLORS.includes(m?.color as string) ? (m.color as string) : NOTE_COLORS[0],
+          at: now,
+        }),
+      )
+      this.saveNotes()
+    })
+    this.onMessage('note:remove', (_c: Client, id: unknown) => {
+      const i = this.state.notes.findIndex((n) => n.id === id)
+      if (i < 0) return
+      this.state.notes.splice(i, 1)
+      this.saveNotes()
+    })
+
+    this.onMessage('status', (client: Client, raw: unknown) => {
+      const p = this.state.players.get(client.sessionId)
+      if (p) p.status = cleanText(raw, 40)
     })
 
     this.onMessage('progress', (client: Client, msg: Record<string, unknown>) => {
@@ -204,11 +243,29 @@ export class OfficeRoom extends Room {
     return 'YouTube video'
   }
 
+  private toNote(s: SavedNote): Note {
+    const n = new Note()
+    n.id = s.id
+    n.text = s.text
+    n.author = s.author
+    n.color = s.color
+    n.at = s.at
+    return n
+  }
+
+  private saveNotes() {
+    this.store.save(this.state.notes.map((n) => ({ id: n.id, text: n.text, author: n.author, color: n.color, at: n.at })))
+  }
+
   private setStanding(p: Player, from: Record<string, unknown>) {
     const whole = (v: unknown, max: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(0, Math.floor(v))) : 0)
     p.level = Math.max(1, whole(from.level, 999))
     p.totalSeconds = whole(from.totalSeconds, 1e9)
     p.streak = whole(from.streak, 100000)
+    p.callSeconds = whole(from.callSeconds, 1e9)
+    p.pomodoros = whole(from.pomodoros, 1e6)
+    p.messages = whole(from.messages, 1e7)
+    p.days = whole(from.days, 100000)
   }
 
   // The door: with INVITE_CODE set, nobody gets in without it.
@@ -234,6 +291,7 @@ export class OfficeRoom extends Room {
     p.hat = options.hat !== false
     p.seat = ''
     p.joinedAt = Date.now()
+    p.status = cleanText(options.status, 40)
     this.setStanding(p, options)
     this.state.players.set(client.sessionId, p)
     this.lastMove.set(client.sessionId, Date.now())

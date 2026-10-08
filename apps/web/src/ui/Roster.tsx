@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { BADGES, QUIET_ZONES, formatDuration, levelOf, roomById, seatById, titleOf, xpOf, type ZoneId } from '@guildhouse/shared'
 import { useGame } from '../game'
-import { joinCallIn, remotes, ringPerson, serverNow, useNet } from '../net/net'
+import { joinCallIn, remotes, ringPerson, serverNow, setStatus, useNet } from '../net/net'
+import { LEVELS_EXPLAINED } from './Profile'
 import { useStats } from '../stats'
 import { Icon } from './icons'
 
@@ -15,8 +16,11 @@ interface Row {
   callZone?: ZoneId
   onlineSeconds: number
   streak: number
+  status: string
   self?: boolean
 }
+
+const STATUSES = ['Available', 'Focusing', 'In a meeting', 'On a break', 'Away']
 
 const inCallAt = (seat: string | null | undefined) => {
   const s = seatById(seat ?? '')
@@ -26,16 +30,16 @@ const inCallAt = (seat: string | null | undefined) => {
 function Person({ row }: { row: Row }) {
   return (
     <li className={row.self ? 'self' : ''}>
-      <div className="roster-level" title={`Level ${row.level}`}>
-        {row.level}
-      </div>
-      <div className="roster-who">
+      <button className="roster-open" title={`View ${row.self ? 'your' : `${row.name}'s`} profile`} onClick={() => useGame.setState({ profileOf: row.id })}>
+        <div className="roster-level">{row.level}</div>
+      </button>
+      <div className="roster-who" onClick={() => useGame.setState({ profileOf: row.id })}>
         <b>
           {row.name}
           {row.self && <i> (you)</i>}
         </b>
         <span>
-          {titleOf(row.level)} · {roomById(row.zone).name}
+          {row.status || titleOf(row.level)} · {roomById(row.zone).name}
         </span>
       </div>
       <div className="roster-meta">
@@ -76,6 +80,8 @@ export function Roster({ onClose }: { onClose: () => void }) {
   const zone = useGame((s) => s.zone)
   const seat = useGame((s) => s.seat)
   const progress = useStats((s) => s.progress)
+  const myStatus = useGame((s) => s.status)
+  const [custom, setCustom] = useState('')
   // Durations and other people's rooms change without any event we subscribe to.
   const [, refresh] = useState(0)
   useEffect(() => {
@@ -87,10 +93,10 @@ export function Roster({ onClose }: { onClose: () => void }) {
   const xp = xpOf(progress)
   const { level, into, span } = levelOf(xp)
   const rows: Row[] = [
-    { id: 'self', name: profile?.name ?? 'You', level, zone, inCall: inCallAt(seat), onlineSeconds: selfJoinedAt ? (now - selfJoinedAt) / 1000 : 0, streak: progress.streak, self: true },
+    { id: 'self', name: profile?.name ?? 'You', level, zone, inCall: inCallAt(seat), onlineSeconds: selfJoinedAt ? (now - selfJoinedAt) / 1000 : 0, streak: progress.streak, status: myStatus, self: true },
     ...ids.flatMap((id) => {
       const r = remotes.get(id)
-      return r ? [{ id, name: r.name, level: r.level || 1, zone: r.zone as ZoneId, inCall: inCallAt(r.seat), callZone: inCallAt(r.seat) ? seatById(r.seat)!.zone : undefined, onlineSeconds: (now - r.joinedAt) / 1000, streak: r.streak }] : []
+      return r ? [{ id, name: r.name, level: r.level || 1, zone: r.zone as ZoneId, inCall: inCallAt(r.seat), callZone: inCallAt(r.seat) ? seatById(r.seat)!.zone : undefined, onlineSeconds: (now - r.joinedAt) / 1000, streak: r.streak, status: r.status }] : []
     }),
   ]
   const facts: [string, string][] = [
@@ -117,6 +123,30 @@ export function Roster({ onClose }: { onClose: () => void }) {
       </ul>
 
       <div className="roster-head">
+        <span>Your status</span>
+      </div>
+      <div className="status-chips">
+        {STATUSES.map((s) => {
+          const value = s === 'Available' ? '' : s
+          return (
+            <button key={s} className={myStatus === value ? 'on' : ''} onClick={() => setStatus(value)}>
+              {s}
+            </button>
+          )
+        })}
+      </div>
+      <form
+        className="status-custom"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (custom.trim()) setStatus(custom)
+          setCustom('')
+        }}
+      >
+        <input value={custom} maxLength={40} placeholder={STATUSES.includes(myStatus) || !myStatus ? 'Or write your own…' : myStatus} onChange={(e) => setCustom(e.target.value)} />
+      </form>
+
+      <div className="roster-head">
         <span>Your journey</span>
       </div>
       <div className="journey">
@@ -129,6 +159,7 @@ export function Roster({ onClose }: { onClose: () => void }) {
         <div className="journey-bar">
           <div style={{ width: `${Math.round((into / span) * 100)}%` }} />
         </div>
+        <p className="profile-note">{LEVELS_EXPLAINED}</p>
         <dl>
           {facts.map(([k, v]) => (
             <div key={k}>

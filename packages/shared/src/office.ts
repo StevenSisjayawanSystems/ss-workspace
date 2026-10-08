@@ -11,6 +11,7 @@ export type ZoneId =
   | 'tavern'
   | 'kitchen'
   | 'garden'
+  | 'meditation'
 
 export type FloorKind = 'wood' | 'darkWood' | 'stone' | 'carpet' | 'tile' | 'grass'
 
@@ -37,7 +38,8 @@ export const ROOMS: Room[] = [
   { id: 'kitchen', name: 'Kitchen', blurb: 'Tea and chatter', x0: 1, z0: 17, x1: 7, z1: 23, floor: 'tile' },
   { id: 'entrance', name: 'Entrance Hall', blurb: 'Welcome', x0: 9, z0: 17, x1: 15, z1: 23, floor: 'stone' },
   { id: 'tavern', name: 'Tavern Lounge', blurb: 'Music by the hearth', x0: 17, z0: 17, x1: 23, z1: 23, floor: 'darkWood' },
-  { id: 'garden', name: 'Garden Terrace', blurb: 'Fresh air', x0: 25, z0: 1, x1: 33, z1: 23, floor: 'grass', outdoor: true },
+  { id: 'garden', name: 'Garden Terrace', blurb: 'Fresh air', x0: 25, z0: 1, x1: 33, z1: 14, floor: 'grass', outdoor: true },
+  { id: 'meditation', name: 'Meditation Grove', blurb: 'Breathe', x0: 25, z0: 16, x1: 33, z1: 23, floor: 'grass', outdoor: true },
 ]
 
 export const DOORS: { x: number; z: number }[] = [
@@ -50,6 +52,8 @@ export const DOORS: { x: number; z: number }[] = [
   { x: 24, z: 11 },
   { x: 24, z: 12 },
   { x: 24, z: 22 },
+  // Garden gate into the meditation grove
+  { x: 29, z: 15 },
 ]
 
 export const SPAWN = { x: 12, z: 21 }
@@ -81,6 +85,7 @@ export type FurnitureType =
   | 'flowers'
   | 'rug'
   | 'rugLong'
+  | 'meditationCircle'
 
 // Tiles blocked at rot 0 as [width along x, depth along z]; null means walk-through.
 export const FOOTPRINTS: Record<FurnitureType, [number, number] | null> = {
@@ -110,6 +115,7 @@ export const FOOTPRINTS: Record<FurnitureType, [number, number] | null> = {
   flowers: null,
   rug: null,
   rugLong: null,
+  meditationCircle: [1, 1],
 }
 
 export interface Furniture {
@@ -199,12 +205,17 @@ export const FURNITURE: Furniture[] = [
   { type: 'tree', x: 32, z: 3 },
   { type: 'tree', x: 33, z: 9 },
   { type: 'tree', x: 32, z: 14 },
-  { type: 'tree', x: 26, z: 17 },
-  { type: 'tree', x: 31, z: 21 },
-  { type: 'picnic', x: 29.5, z: 16.5 },
+  { type: 'picnic', x: 29.5, z: 12.5 },
   { type: 'lantern', x: 25, z: 10 },
   { type: 'lantern', x: 25, z: 13 },
-  { type: 'lantern', x: 28, z: 20 },
+
+  // Meditation grove: cushions in a ring around a quiet stone
+  { type: 'meditationCircle', x: 29, z: 20 },
+  { type: 'tree', x: 26, z: 17 },
+  { type: 'tree', x: 33, z: 16 },
+  { type: 'tree', x: 25, z: 20 },
+  { type: 'lantern', x: 27, z: 16 },
+  { type: 'lantern', x: 31, z: 16 },
   { type: 'flowers', x: 26, z: 5 },
   { type: 'flowers', x: 32, z: 7 },
   { type: 'flowers', x: 27, z: 13 },
@@ -257,7 +268,7 @@ function build() {
         zones[idx(x, z)] = r.id
       }
   const outdoor = new Set(ROOMS.filter((r) => r.outdoor).map((r) => r.id))
-  // Any empty tile touching a room becomes its boundary: wall for indoor rooms, hedge for the garden.
+  // Any empty tile touching a room becomes its boundary: wall for indoor rooms, hedge for outdoor ones.
   for (let x = 0; x < GRID_W; x++)
     for (let z = 0; z < GRID_H; z++) {
       if (zones[idx(x, z)]) continue

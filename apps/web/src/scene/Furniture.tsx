@@ -393,6 +393,34 @@ const PIECES: Record<FurnitureType, () => ReactNode> = {
       <C r={0.8} h={0.02} p={[0, 0.024, 0]} c={PAL.teal} seg={28} />
     </>
   ),
+  meditationCircle: () => (
+    <>
+      {/* a ring of raked ground, a standing stone with a soft light, and six cushions */}
+      <C r={2.5} h={0.02} p={[0, 0.012, 0]} c="#d9cfae" seg={36} />
+      <C r={2.15} h={0.02} p={[0, 0.016, 0]} c="#cbbf9c" seg={36} />
+      <C r={1.0} h={0.02} p={[0, 0.02, 0]} c="#d9cfae" seg={28} />
+      <S r={0.34} p={[0, 0.3, 0]} c={PAL.stoneDark} s={[1, 1.5, 0.9]} />
+      <S r={0.2} p={[0.28, 0.14, 0.18]} c={PAL.stone} s={[1.2, 0.8, 1]} />
+      <S r={0.16} p={[-0.3, 0.1, -0.1]} c={PAL.moss} s={[1.3, 0.6, 1.1]} />
+      <Bob>
+        <G r={0.07} p={[0, 0.98, 0]} c="#bfeee6" k={1.6} />
+        <G r={0.04} p={[0.3, 1.25, 0.1]} c="#ffd98a" />
+        <G r={0.035} p={[-0.25, 1.4, -0.15]} c="#bfeee6" />
+      </Bob>
+      {[0, 1, 2, 3, 4, 5].map((i) => {
+        const a = (i / 6) * Math.PI * 2 + Math.PI / 6
+        return (
+          <group key={i} position={[Math.cos(a) * 1.65, 0, Math.sin(a) * 1.65]}>
+            <S r={0.34} p={[0, 0.07, 0]} c={i % 2 ? PAL.purple : PAL.teal} s={[1, 0.28, 1]} />
+          </group>
+        )
+      })}
+      {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => {
+        const a = (i / 8) * Math.PI * 2
+        return <S key={i} r={0.13} p={[Math.cos(a) * 2.5, 0.06, Math.sin(a) * 2.5]} c={i % 2 ? PAL.stone : PAL.stoneDark} s={[1.2, 0.7, 1]} />
+      })}
+    </>
+  ),
   rugLong: () => (
     <>
       <B s={[20, 0.02, 1.5]} p={[0, 0.012, 0]} c={PAL.red} />
@@ -438,6 +466,18 @@ const openJukebox = (e: ThreeEvent<MouseEvent>) => {
   useGame.getState().setJukeOpen(true)
 }
 
+const openBoard = (e: ThreeEvent<MouseEvent>) => {
+  e.stopPropagation()
+  useGame.setState({ boardOpen: true })
+}
+// Things you can click say so with the cursor.
+const pointer = () => {
+  document.body.style.cursor = 'pointer'
+}
+const unpointer = () => {
+  document.body.style.cursor = ''
+}
+
 export function FurnitureLayer() {
   return (
     <group>
@@ -446,7 +486,9 @@ export function FurnitureLayer() {
           key={i}
           position={[f.x, 0, f.z]}
           rotation-y={((f.rot ?? 0) * Math.PI) / 2}
-          onClick={f.type === 'gramophone' ? openJukebox : undefined}
+          onClick={f.type === 'gramophone' ? openJukebox : f.type === 'noticeBoard' ? openBoard : undefined}
+          onPointerOver={f.type === 'gramophone' || f.type === 'noticeBoard' ? pointer : undefined}
+          onPointerOut={f.type === 'gramophone' || f.type === 'noticeBoard' ? unpointer : undefined}
         >
           <Piece type={f.type} />
         </group>
