@@ -3,7 +3,7 @@ import { create } from 'zustand'
 import { QUIET_ZONES, SEATS, roomById, seatById, standSpot, type Seat, type ZoneId } from '@guildhouse/shared'
 import { inReach, player, saveStatus, useGame, walkToSeat, type Profile } from '../game'
 import { DEFAULT_LOOK, type AvatarLook } from '../look'
-import { bell, ringtone } from '../sound'
+import { bell, knockSound, ringtone } from '../sound'
 import { announce, count, standing, type Standing } from '../stats'
 
 // Other players. `tx/tz/tfacing` are the latest server values; `x/z/facing` are what is drawn and ease towards them.
@@ -88,7 +88,27 @@ export interface NoteItem {
   at: number
 }
 
+export interface BookingItem {
+  id: string
+  zone: ZoneId
+  by: string
+  start: number
+  until: number
+}
+
+// Someone knocking on the closed door of the room we are seated in.
+export interface Knock {
+  from: string
+  name: string
+  zone: ZoneId
+}
+
 interface NetState {
+  // Claimed workroom desks (desk id -> owner's name), the meeting room schedule, and rooms whose door is closed (zone -> who closed it).
+  desks: Record<string, string>
+  bookings: BookingItem[]
+  closed: Record<string, string>
+  knock: Knock | null
   // Bulletin board notes, oldest first; and what each other person says they are up to.
   notes: NoteItem[]
   statuses: Record<string, string>
@@ -113,7 +133,7 @@ interface NetState {
 
 const NO_MUSIC: JukeState = { queue: [], startedAt: 0, paused: false, pausedAt: 0 }
 
-export const useNet = create<NetState>(() => ({ notes: [], statuses: {}, pomo: NO_TIMER, ringing: null, inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
+export const useNet = create<NetState>(() => ({ desks: {}, bookings: [], closed: {}, knock: null, notes: [], statuses: {}, pomo: NO_TIMER, ringing: null, inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
 
 const SEND_MS = 80
 const CONNECT_TIMEOUT_MS = 8000
@@ -217,6 +237,21 @@ function syncNotes(state: any) {
   useNet.setState({ notes })
 }
 
+let reservationsKey = ''
+function syncReservations(state: any) {
+  const desks: Record<string, string> = {}
+  state.desks?.forEach((c: any) => (desks[c.deskId] = c.owner))
+  const bookings: BookingItem[] = []
+  state.bookings?.forEach((b: any) => bookings.push({ id: b.id, zone: b.zone, by: b.by, start: b.start, until: b.until }))
+  bookings.sort((a, b) => a.start - b.start)
+  const closed: Record<string, string> = {}
+  state.doors?.forEach((d: any) => (closed[d.zone] = d.by))
+  const key = JSON.stringify([desks, bookings, closed])
+  if (key === reservationsKey) return
+  reservationsKey = key
+  useNet.setState({ desks, bookings, closed })
+}
+
 let pomoKey = ''
 function syncPomodoro(state: any) {
   const p = state.pomodoro
@@ -295,10 +330,11 @@ function disconnected(profile: Profile) {
   jukeKey = ''
   pomoKey = ''
   notesKey = ''
+  reservationsKey = ''
   ringtone.stop()
   room = null
   remotes.clear()
-  useNet.setState({ status: 'offline', selfId: null, ids: [], juke: NO_MUSIC, pomo: NO_TIMER, ringing: null, inCall: false, call: [], taken: {}, ranks: {} })
+  useNet.setState({ status: 'offline', selfId: null, ids: [], juke: NO_MUSIC, pomo: NO_TIMER, ringing: null, knock: null, desks: {}, bookings: [], closed: {}, inCall: false, call: [], taken: {}, ranks: {} })
   useGame.setState({ seat: null, pendingSeat: null })
   clearTimeout(retryTimer)
   retryTimer = setTimeout(() => connect(profile, inviteCode), 3000)
@@ -339,6 +375,7 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
       syncJukebox(state)
       syncPomodoro(state)
       syncNotes(state)
+      syncReservations(state)
     })
     joined.onMessage('clock', (m: { t0: number; now: number }) => {
       clockOffset = m.now - (m.t0 + Date.now()) / 2
@@ -359,6 +396,20 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
         count('pomodoros')
         announce('Break time', 'Focus session complete')
       } else announce('Back to focus', 'Break is over')
+    })
+    joined.onMessage('notice', (m: { title: string; detail: string }) => announce(m.title, m.detail))
+    joined.onMessage('knock', (m: Knock) => {
+      if (useNet.getState().knock) return
+      useNet.setState({ knock: m })
+      knockSound()
+      clearTimeout(knockTimeout)
+      knockTimeout = setTimeout(() => useNet.getState().knock?.from === m.from && useNet.setState({ knock: null }), RING_SECONDS * 1000)
+    })
+    // Someone else in the room answered it.
+    joined.onMessage('knock:settled', (m: { from: string }) => useNet.getState().knock?.from === m.from && useNet.setState({ knock: null }))
+    joined.onMessage('knock:answer', (m: { name: string; zone: ZoneId; accept: boolean }) => {
+      announce(m.name, m.accept ? 'let you in' : 'cannot let you in right now')
+      if (m.accept) joinCallIn(m.zone)
     })
     joined.onMessage('ring', (m: Ring) => {
       // A second caller while one is already ringing is simply ignored.
@@ -452,6 +503,7 @@ export function joinCallIn(zone: ZoneId) {
 const RING_SECONDS = 30
 let ringTimeout: ReturnType<typeof setTimeout> | undefined
 let noAnswer: ReturnType<typeof setTimeout> | undefined
+let knockTimeout: ReturnType<typeof setTimeout> | undefined
 
 // Calls someone over. If we are not already seated in a call, we take the nearest free seat first,
 // preferring the room we are standing in, and invite them to that room.
@@ -479,6 +531,27 @@ export function answerRing(accept: boolean) {
   useNet.setState({ ringing: null })
   room?.send('ring:answer', { to: ring.from, accept })
   if (accept) joinCallIn(ring.zone)
+}
+
+export const desks = {
+  claim: (deskId: string) => room?.send('desk:claim', deskId),
+  release: () => room?.send('desk:release'),
+}
+
+export const rooms = {
+  // `start` is a time on this computer's clock; it is translated to the server's.
+  book: (zone: ZoneId, start: number | null, minutes: number) => room?.send('room:book', { zone, start: start === null ? undefined : start + clockOffset, minutes }),
+  cancel: (id: string) => room?.send('room:cancel', id),
+  closeDoor: () => room?.send('door:close'),
+  openDoor: () => room?.send('door:open'),
+}
+
+export function answerKnock(accept: boolean) {
+  const knock = useNet.getState().knock
+  if (!knock) return
+  clearTimeout(knockTimeout)
+  useNet.setState({ knock: null })
+  room?.send('knock:answer', { to: knock.from, accept })
 }
 
 export const board = {
@@ -532,7 +605,7 @@ export const jukebox = {
   duration: (id: string, duration: number) => room?.send('juke:duration', { id, duration }),
 }
 
-if (import.meta.env.DEV) Object.assign((window as any).__game, { net: { useNet, remotes, jukebox, sendChat, sendEmote, requestSit, standUp, connect, ringPerson, answerRing, pomodoro, board, setStatus } })
+if (import.meta.env.DEV) Object.assign((window as any).__game, { net: { useNet, remotes, jukebox, sendChat, sendEmote, requestSit, standUp, connect, ringPerson, answerRing, pomodoro, board, setStatus, desks, rooms, answerKnock } })
 
 // This module owns a live connection, so a hot update cannot be applied in place.
 import.meta.hot?.dispose(() => {

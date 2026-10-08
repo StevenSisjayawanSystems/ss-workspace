@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import { GRID_H, GRID_W, WALK_SPEED, circleFree, route, seatById, zoneAt, type Point } from '@guildhouse/shared'
@@ -7,6 +7,7 @@ import type { AvatarLook } from '../look'
 import { addDistance } from '../stats'
 import { requestSit, standUp, useNet } from '../net/net'
 import { Avatar } from './Avatar'
+import { Label } from './Label'
 import { glow } from './toon'
 
 const KEYS: Record<string, [number, number]> = {
@@ -133,6 +134,22 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
     }
   })
 
+  // Clicking yourself opens your own profile, the same way clicking anyone else opens theirs.
+  const [hover, setHover] = useState(false)
+  const overSelf = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation()
+    setHover(true)
+    document.body.style.cursor = 'pointer'
+  }
+  const outSelf = () => {
+    setHover(false)
+    document.body.style.cursor = ''
+  }
+  const clickSelf = (e: ThreeEvent<MouseEvent>) => {
+    e.stopPropagation()
+    if (e.delta <= 8) useGame.setState({ profileOf: 'self' })
+  }
+
   const onGround = (e: ThreeEvent<MouseEvent>) => {
     if (e.delta > 8) return // a drag or pinch, not a tap
     useGame.getState().walkTo(e.point.x, e.point.z)
@@ -148,6 +165,10 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
       </mesh>
       <group ref={group}>
         <Avatar name={name} status={status} look={look} moving={moving} seated={seated} bubble={bubble} />
+        <mesh position={[0, 0.7, 0]} visible={false} onPointerOver={overSelf} onPointerOut={outSelf} onClick={clickSelf}>
+          <cylinderGeometry args={[0.34, 0.34, 1.4, 10]} />
+        </mesh>
+        {hover && !bubble && <Label text="Your profile" y={look.hat ? 2.08 : 1.82} />}
       </group>
     </>
   )

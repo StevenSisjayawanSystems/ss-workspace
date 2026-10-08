@@ -1,8 +1,9 @@
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { DOORS, GRID_H, GRID_W, ROOMS, WALL_DECOR, tileAt, type Room } from '@guildhouse/shared'
+import { DOORS, GRID_H, GRID_W, ROOMS, WALL_DECOR, tileAt, type Room, zoneAt } from '@guildhouse/shared'
 import { player, useGame } from '../game'
+import { useNet } from '../net/net'
 import { PAL, floorTexture, glow, shingleTexture, toon, toonRamp } from './toon'
 
 type V3 = [number, number, number]
@@ -144,8 +145,11 @@ function Floor({ room }: { room: Room }) {
 function Door({ x, z, locked = false }: { x: number; z: number; locked?: boolean }) {
   const leaf = useRef<THREE.Group>(null!)
   const alongX = tileAt(x - 1, z) !== 'floor' && tileAt(x + 1, z) !== 'floor'
+  // The room this door leads into (the one to its north), if someone inside has closed it.
+  const zone = zoneAt(x, z - 1)
+  const shut = useNet((s) => !!zone && !!s.closed[zone])
   useFrame((_, dt) => {
-    const near = !locked && Math.hypot(player.x - x, player.z - z) < 1.9
+    const near = !locked && !shut && Math.hypot(player.x - x, player.z - z) < 1.9
     leaf.current.rotation.y = THREE.MathUtils.damp(leaf.current.rotation.y, near ? -1.9 : 0, 8, dt)
   })
   return (
@@ -165,7 +169,7 @@ function Door({ x, z, locked = false }: { x: number; z: number; locked?: boolean
         <sphereGeometry args={[0.09, 10, 8]} />
       </mesh>
       <group ref={leaf} position={[-0.39, 0, 0]}>
-        <mesh position={[0.39, 0.92, 0]} material={toon(locked ? PAL.red : PAL.teal)} castShadow>
+        <mesh position={[0.39, 0.92, 0]} material={toon(locked || shut ? PAL.red : PAL.teal)} castShadow>
           <boxGeometry args={[0.78, 1.84, 0.1]} />
         </mesh>
         <mesh position={[0.66, 0.9, 0.08]} material={toon(PAL.brass)}>

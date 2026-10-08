@@ -89,6 +89,17 @@ export const Icon = {
       <path d="M9 4h6l-1 5 3 3v2H7v-2l3-3zM12 14v6" />
     </Svg>
   ),
+  door: () => (
+    <Svg>
+      <path d="M6 20.500V4.500a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v16M4 20.500h16M14.500 12.500h.01" />
+    </Svg>
+  ),
+  calendar: () => (
+    <Svg>
+      <rect x="4" y="5.500" width="16" height="14" rx="1.500" />
+      <path d="M4 10h16M8.500 3.500v4M15.500 3.500v4" />
+    </Svg>
+  ),
   expand: () => (
     <Svg>
       <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />

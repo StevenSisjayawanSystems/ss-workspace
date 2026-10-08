@@ -12,6 +12,7 @@ import { CloudShadows, Grass, Path, Wildflowers } from './Nature'
 import { Player } from './Player'
 import { Remotes } from './Remotes'
 import { Seats } from './Seats'
+import { Desks, ScheduleSigns } from './Reservations'
 import type { Profile } from '../game'
 import { localHour, sky, skyAt } from '../time'
 
@@ -140,6 +141,8 @@ export function Scene({ profile }: { profile: Profile | null }) {
       {profile && <Player name={profile.name} look={profile.look} />}
       <Remotes />
       {profile && <Seats />}
+      {profile && <Desks />}
+      {profile && <ScheduleSigns />}
       <Sparkles position={[29, 1.3, 12]} scale={[9, 1.6, 23]} count={45} size={14} speed={0.35} color="#fff3a0" />
       <Sparkles position={[12, 1.4, 12]} scale={[23, 1.8, 23]} count={70} size={6} speed={0.2} opacity={0.5} color="#fff8e0" />
       <CameraRig tour={!profile} />

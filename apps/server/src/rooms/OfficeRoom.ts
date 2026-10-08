@@ -6,6 +6,7 @@ import { MAX_NOTES, MAX_NOTE_LENGTH, NOTE_COLORS, Note, NoteStore, type SavedNot
 import { iceServers } from '../ice'
 import * as juke from '../jukebox'
 import * as pomo from '../pomodoro'
+import * as res from '../reservations'
 import { cleanColor, cleanText, validMove } from '../rules'
 
 export const Player = schema(
@@ -39,7 +40,7 @@ export const Player = schema(
 )
 export type Player = SchemaType<typeof Player>
 
-export const OfficeState = schema({ players: t.map(Player), jukebox: juke.Jukebox, pomodoro: pomo.Pomodoro, notes: t.array(Note) }, 'OfficeState')
+export const OfficeState = schema({ players: t.map(Player), jukebox: juke.Jukebox, pomodoro: pomo.Pomodoro, notes: t.array(Note), desks: t.array(res.DeskClaim), bookings: t.array(res.Booking), doors: t.array(res.ClosedDoor) }, 'OfficeState')
 export type OfficeState = SchemaType<typeof OfficeState>
 
 // Close code sent when the invite code is missing or wrong.
@@ -53,7 +54,9 @@ export class OfficeRoom extends Room {
   private lastMove = new Map<string, number>()
   private lastChat = new Map<string, number>()
   private lastRing = new Map<string, number>()
+  private lastKnock = new Map<string, number>()
   private store = new NoteStore(config.dataDir)
+  private reservations = new res.ReservationStore(config.dataDir)
   private adds: Promise<void> = Promise.resolve()
 
   onCreate() {
@@ -83,6 +86,10 @@ export class OfficeRoom extends Room {
         if (sid !== client.sessionId && other.seat === seat.id) taken = true
       })
       if (taken || (!p.seat && Math.hypot(seat.x - p.x, seat.z - p.z) > SIT_REACH + 0.6)) return
+      const insideAlready = !!p.seat && p.zone === seat.zone
+      const refused = res.seatRefusal(this.state, seat.id, seat.zone, p.name, insideAlready)
+      if (refused === res.KNOCK) return this.knock(client, p.name, seat.zone)
+      if (refused) return client.send('notice', { title: refused, detail: 'Pick another seat' })
       p.seat = seat.id
       p.x = seat.x
       p.z = seat.z
@@ -102,6 +109,30 @@ export class OfficeRoom extends Room {
       this.lastMove.set(client.sessionId, Date.now())
     })
 
+    // Closing the door of the room you are seated in means newcomers knock; anyone seated there can reopen it.
+    this.onMessage('door:close', (client: Client) => {
+      const p = this.state.players.get(client.sessionId)
+      if (!p?.seat) return
+      const problem = res.closeDoor(this.state, p.zone, p.name)
+      if (problem) client.send('notice', { title: problem, detail: 'Only the council chambers have doors' })
+    })
+    this.onMessage('door:open', (client: Client) => {
+      const p = this.state.players.get(client.sessionId)
+      if (p?.seat) res.openDoor(this.state, p.zone)
+    })
+
+    // Someone seated inside answers a knock.
+    this.onMessage('knock:answer', (client: Client, m: { to?: unknown; accept?: unknown }) => {
+      const host = this.state.players.get(client.sessionId)
+      const guest = typeof m?.to === 'string' ? this.state.players.get(m.to) : undefined
+      if (!host?.seat || !guest || !res.doorClosed(this.state, host.zone)) return
+      const accept = m.accept === true
+      if (accept) res.admit(this.state, host.zone, guest.name)
+      this.clients.find((c) => c.sessionId === m.to)?.send('knock:answer', { name: host.name, zone: host.zone, accept })
+      // The knock is settled for everyone else in the room too.
+      this.broadcast('knock:settled', { from: m.to })
+    })
+
     // WebRTC signalling: passed along only between two people seated in the same room's call.
     this.onMessage('rtc', (client: Client, msg: { to?: string; data?: unknown }) => {
       const from = this.state.players.get(client.sessionId)
@@ -109,6 +140,30 @@ export class OfficeRoom extends Room {
       if (!from || !to || !from.seat || !to.seat || from.zone !== to.zone) return
       if (QUIET_ZONES.includes(from.zone as ZoneId)) return
       this.clients.find((c) => c.sessionId === msg.to)?.send('rtc', { from: client.sessionId, data: msg.data })
+    })
+
+    // Desks and meeting rooms
+    this.reservations.restore(this.state, Date.now())
+    const tell = (client: Client, problem: string | null, detail: string) => problem && client.send('notice', { title: problem, detail })
+    this.onMessage('desk:claim', (client: Client, deskId: unknown) => {
+      const p = this.state.players.get(client.sessionId)
+      if (!p) return
+      tell(client, res.claimDesk(this.state, deskId, p.name), 'Choose a free desk')
+      this.saveReservations()
+    })
+    this.onMessage('desk:release', (client: Client) => {
+      const p = this.state.players.get(client.sessionId)
+      if (p && res.releaseDesk(this.state, p.name)) this.saveReservations()
+    })
+    this.onMessage('room:book', (client: Client, m: { zone?: unknown; start?: unknown; minutes?: unknown }) => {
+      const p = this.state.players.get(client.sessionId)
+      if (!p || !m) return
+      tell(client, res.bookRoom(this.state, m.zone, m.start, m.minutes, p.name, Date.now()), 'Try another time or the other chamber')
+      this.saveReservations()
+    })
+    this.onMessage('room:cancel', (client: Client, id: unknown) => {
+      const p = this.state.players.get(client.sessionId)
+      if (p && res.cancelBooking(this.state, id, p.name)) this.saveReservations()
     })
 
     // Bulletin board
@@ -164,6 +219,8 @@ export class OfficeRoom extends Room {
     this.setSimulationInterval(() => {
       const now = Date.now()
       juke.tick(jb, now)
+      if (res.expire(this.state, now)) this.saveReservations()
+      res.reopenEmpty(this.state, this.occupied())
       const finished = pomo.tick(timer, now)
       // Everyone hears the bell; only a finished focus session earns credit.
       if (finished) this.broadcast('pomo:done', { finished, round: timer.round })
@@ -253,6 +310,30 @@ export class OfficeRoom extends Room {
     return n
   }
 
+  // The door is closed: the knock goes to everyone seated inside.
+  private knock(client: Client, name: string, zone: string) {
+    const now = Date.now()
+    if (now - (this.lastKnock.get(client.sessionId) ?? 0) < 4000) return
+    this.lastKnock.set(client.sessionId, now)
+    const inside = this.clients.filter((c) => {
+      const p = this.state.players.get(c.sessionId)
+      return !!p?.seat && p.zone === zone
+    })
+    for (const c of inside) c.send('knock', { from: client.sessionId, name, zone })
+    client.send('notice', { title: 'Knock, knock', detail: 'The door is closed. Waiting to be let in' })
+  }
+
+  // Zones with at least one person seated.
+  private occupied(): Set<string> {
+    const zones = new Set<string>()
+    this.state.players.forEach((p) => p.seat && zones.add(p.zone))
+    return zones
+  }
+
+  private saveReservations() {
+    this.reservations.save(this.state)
+  }
+
   private saveNotes() {
     this.store.save(this.state.notes.map((n) => ({ id: n.id, text: n.text, author: n.author, color: n.color, at: n.at })))
   }
@@ -305,5 +386,6 @@ export class OfficeRoom extends Room {
     this.lastMove.delete(client.sessionId)
     this.lastChat.delete(client.sessionId)
     this.lastRing.delete(client.sessionId)
+    this.lastKnock.delete(client.sessionId)
   }
 }

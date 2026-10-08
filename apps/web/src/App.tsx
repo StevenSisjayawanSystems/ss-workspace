@@ -10,6 +10,7 @@ import { CallBar } from './ui/CallBar'
 import { Chat } from './ui/Chat'
 import { Hud } from './ui/Hud'
 import { Join } from './ui/Join'
+import { Schedule } from './ui/Schedule'
 import { Joystick } from './ui/Joystick'
 
 export function App() {
@@ -33,6 +34,7 @@ export function App() {
           <Meditation />
           <CallBar />
           <Board />
+          <Schedule />
           {touch && <Joystick />}
         </>
       ) : (

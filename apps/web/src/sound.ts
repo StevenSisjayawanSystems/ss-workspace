@@ -27,6 +27,11 @@ export function bell(rising: boolean) {
   notes.forEach((f, i) => tone(f, i * 0.22, 1.1))
 }
 
+// Three knuckle raps on a door.
+export function knockSound() {
+  ;[0, 0.16, 0.32].forEach((at) => tone(170, at, 0.12, 0.22))
+}
+
 let ringTimer: ReturnType<typeof setInterval> | undefined
 const ringOnce = () => {
   tone(880, 0, 0.35, 0.09)

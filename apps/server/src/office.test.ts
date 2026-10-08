@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Client, type Room } from '@colyseus/sdk'
-import { SEATS, SPAWN, circleFree } from '@guildhouse/shared'
+import { DESKS, SEATS, SPAWN, circleFree } from '@guildhouse/shared'
 import { createServer } from './app'
 import { cleanColor, cleanText, validMove } from './rules'
 
@@ -154,6 +154,62 @@ describe('office room', () => {
     await wait(200)
     expect(a.state.notes.length).toBe(0)
 
+    // Reservations reach everyone, and a claimed desk's chair is refused to others with an explanation.
+    const notices: any[] = []
+    b.onMessage('notice', (m: any) => notices.push(m))
+    a.onMessage('notice', () => {})
+    a.send('desk:claim', DESKS[0].id)
+    a.send('room:book', { zone: 'councilA', minutes: 30 })
+    await wait(200)
+    expect(b.state.desks.map((c: any) => [c.deskId, c.owner])).toEqual([[DESKS[0].id, 'Ada']])
+    expect(b.state.bookings[0]).toMatchObject({ zone: 'councilA', by: 'Ada' })
+    b.send('desk:claim', DESKS[0].id)
+    await wait(200)
+    expect(notices[0]).toEqual({ title: "That desk is Ada's", detail: 'Choose a free desk' })
+    // Closed door: both walk to the council chamber; Ada sits and closes the door, Ben has to knock.
+    const council = SEATS.filter((x) => x.zone === 'councilA').sort((p, q) => q.z - p.z)
+    const walk = async (who: any, stops: [number, number][]) => {
+      for (const [x, z] of stops) {
+        who.send('move', { x, z, facing: 0, moving: true })
+        await wait(280)
+      }
+    }
+    const route: [number, number][] = [[12, 19.2], [12, 17.2], [12, 15.2], [12, 13.2], [12, 11.2], [12, 9.2], [12, 7.2], [12, 6.2]]
+    await Promise.all([walk(a, route), walk(b, route)])
+    const knocks: any[] = []
+    const letIn: any[] = []
+    a.onMessage('knock', (m: any) => knocks.push(m))
+    a.onMessage('knock:settled', () => {})
+    b.onMessage('knock:settled', () => {})
+    b.onMessage('knock:answer', (m: any) => letIn.push(m))
+    a.send('sit', council[0].id)
+    await wait(200)
+    expect(players(b)[a.sessionId].seat).toBe(council[0].id)
+    a.send('door:close')
+    await wait(200)
+    expect(b.state.doors.map((d: any) => [d.zone, d.by])).toEqual([['councilA', 'Ada']])
+    b.send('sit', council[1].id)
+    await wait(200)
+    expect(players(a)[b.sessionId].seat).toBe('')
+    expect(knocks).toEqual([{ from: b.sessionId, name: 'Ben', zone: 'councilA' }])
+    a.send('knock:answer', { to: b.sessionId, accept: true })
+    await wait(200)
+    expect(letIn).toEqual([{ name: 'Ada', zone: 'councilA', accept: true }])
+    b.send('sit', council[1].id)
+    await wait(200)
+    expect(players(a)[b.sessionId].seat).toBe(council[1].id)
+    // Once everyone has left, the door opens by itself.
+    a.send('stand')
+    b.send('stand')
+    await wait(1300)
+    expect(b.state.doors.length).toBe(0)
+
+    a.send('desk:release')
+    a.send('room:cancel', b.state.bookings[0].id)
+    await wait(200)
+    expect(b.state.desks.length).toBe(0)
+    expect(b.state.bookings.length).toBe(0)
+
     const errors: string[] = []
     a.onMessage('juke:error', (m: string) => errors.push(m))
     a.onMessage('clock', () => {})
@@ -176,5 +232,5 @@ describe('office room', () => {
     await wait(200)
     expect(Object.keys(players(b))).toEqual([b.sessionId])
     await b.leave()
-  }, 15000)
+  }, 40000)
 })

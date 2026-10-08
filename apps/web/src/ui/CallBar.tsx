@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react'
-import { QUIET_ZONES, roomById, seatById } from '@guildhouse/shared'
+import { BOOKABLE_ZONES, QUIET_ZONES, roomById, seatById } from '@guildhouse/shared'
 import { useGame } from '../game'
-import { remotes, standUp, useNet } from '../net/net'
+import { remotes, rooms, standUp, useNet } from '../net/net'
 import { canShareScreen, levels, startVoice, toggleBlur, toggleCam, toggleMic, toggleScreen, useVoice } from '../voice/voice'
 import { Chat } from './Chat'
 import { Icon } from './icons'
@@ -74,6 +74,7 @@ export function CallBar() {
   const profile = useGame((s) => s.profile)
   const call = useNet((s) => s.call)
   const inCall = useNet((s) => s.inCall)
+  const closed = useNet((s) => s.closed)
   const { mic, cam, micError, camError, local, peers, focus, blur, blurBusy, screen } = useVoice()
   useEffect(startVoice, [])
   useEffect(() => {
@@ -129,6 +130,11 @@ export function CallBar() {
         {canShareScreen && (
           <Btn label={screen ? 'Stop sharing my screen' : 'Share my screen'} on={!!screen} onClick={() => void toggleScreen()}>
             <Icon.screen />
+          </Btn>
+        )}
+        {BOOKABLE_ZONES.includes(seat.zone) && (
+          <Btn label={closed[seat.zone] ? 'Open the door' : 'Close the door: newcomers must knock'} on={!!closed[seat.zone]} onClick={() => (closed[seat.zone] ? rooms.openDoor() : rooms.closeDoor())}>
+            <Icon.door />
           </Btn>
         )}
         <Btn label={focus ? 'Back to the office' : 'Focus on the call'} on={focus} onClick={() => useVoice.setState({ focus: !focus })}>
