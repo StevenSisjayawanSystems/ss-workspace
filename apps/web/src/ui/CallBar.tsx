@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { QUIET_ZONES, roomById, seatById } from '@guildhouse/shared'
 import { useGame } from '../game'
 import { remotes, standUp, useNet } from '../net/net'
-import { levels, startVoice, toggleCam, toggleMic, useVoice } from '../voice/voice'
+import { levels, startVoice, toggleBlur, toggleCam, toggleMic, useVoice } from '../voice/voice'
 import { Chat } from './Chat'
 import { Icon } from './icons'
 
@@ -61,7 +61,7 @@ export function CallBar() {
   const profile = useGame((s) => s.profile)
   const call = useNet((s) => s.call)
   const inCall = useNet((s) => s.inCall)
-  const { mic, cam, micError, camError, local, peers, focus } = useVoice()
+  const { mic, cam, micError, camError, local, peers, focus, blur, blurBusy } = useVoice()
   useEffect(startVoice, [])
   useEffect(() => {
     if (!focus) return
@@ -107,6 +107,9 @@ export function CallBar() {
         </Btn>
         <Btn label={cam ? 'Turn camera off' : 'Turn camera on'} on={cam} onClick={() => void toggleCam()}>
           {cam ? <Icon.cam /> : <Icon.camOff />}
+        </Btn>
+        <Btn label={blurBusy ? 'Preparing background blur' : blur ? 'Stop blurring my background' : 'Blur my background'} on={blur} onClick={() => void toggleBlur()}>
+          <Icon.blur />
         </Btn>
         <Btn label={focus ? 'Back to the office' : 'Focus on the call'} on={focus} onClick={() => useVoice.setState({ focus: !focus })}>
           {focus ? <Icon.shrink /> : <Icon.expand />}

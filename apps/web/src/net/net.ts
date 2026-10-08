@@ -316,7 +316,7 @@ export const jukebox = {
   duration: (id: string, duration: number) => room?.send('juke:duration', { id, duration }),
 }
 
-if (import.meta.env.DEV) Object.assign((window as any).__game, { net: { useNet, remotes, jukebox, sendChat, sendEmote, requestSit, standUp } })
+if (import.meta.env.DEV) Object.assign((window as any).__game, { net: { useNet, remotes, jukebox, sendChat, sendEmote, requestSit, standUp, connect } })
 
 // This module owns a live connection, so a hot update cannot be applied in place.
 import.meta.hot?.dispose(() => {

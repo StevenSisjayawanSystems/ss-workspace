@@ -35,6 +35,13 @@ export const Icon = {
       {slash}
     </Svg>
   ),
+  blur: () => (
+    <Svg>
+      <circle cx="12" cy="9" r="3" />
+      <path d="M6.500 19a5.500 5.500 0 0 1 11 0" />
+      <path d="M3 5h.01M3 10h.01M3 15h.01M21 5h.01M21 10h.01M21 15h.01M7 3h.01M17 3h.01" />
+    </Svg>
+  ),
   expand: () => (
     <Svg>
       <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { ice, onRtc, sendRtc, useNet } from '../net/net'
+import type { Blurred } from './blur'
 
 // Room calls are a direct mesh: one WebRTC connection to each other person seated in the room.
 // That needs no media server and suits a handful of people; the game server only relays the handshake.
@@ -21,9 +22,21 @@ interface VoiceState {
   peers: Record<string, PeerView>
   // Full-screen view of the call with the chat alongside.
   focus: boolean
+  // Blur the room behind you on camera. `blurBusy` is true while the model loads.
+  blur: boolean
+  blurBusy: boolean
 }
 
-export const useVoice = create<VoiceState>(() => ({ mic: true, cam: false, micError: null, camError: null, local: null, peers: {}, focus: false }))
+const BLUR_KEY = 'guildhouse.blur'
+function savedBlur() {
+  try {
+    return localStorage.getItem(BLUR_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+export const useVoice = create<VoiceState>(() => ({ mic: true, cam: false, micError: null, camError: null, local: null, peers: {}, focus: false, blur: savedBlur(), blurBusy: false }))
 
 // How loudly each person is speaking right now, 0 to 1, keyed by session id ('self' for us).
 // Kept outside React: tiles read it every frame.
@@ -80,7 +93,10 @@ interface Peer {
 }
 const peers = new Map<string, Peer>()
 let audioTrack: MediaStreamTrack | null = null
+// `videoTrack` is what we send; with blur on it is a processed copy of `cameraTrack`.
 let videoTrack: MediaStreamTrack | null = null
+let cameraTrack: MediaStreamTrack | null = null
+let blurred: Blurred | null = null
 let ready: Promise<void> | null = null
 
 const describe = (e: unknown) => (e instanceof DOMException && e.name === 'NotAllowedError' ? 'blocked in the browser' : 'not available')
@@ -193,8 +209,8 @@ function leave() {
   ready = null
   for (const id of [...peers.keys()]) closePeer(id)
   audioTrack?.stop()
-  videoTrack?.stop()
-  audioTrack = videoTrack = null
+  stopCamera()
+  audioTrack = null
   meter('self', null)
   useVoice.setState({ focus: false, cam: false, local: null, peers: {}, micError: null, camError: null })
 }
@@ -227,16 +243,51 @@ export async function toggleMic() {
   tellEveryone()
 }
 
+function stopCamera() {
+  blurred?.stop()
+  blurred = null
+  cameraTrack?.stop()
+  cameraTrack = videoTrack = null
+}
+
+// Chooses what to send from the camera: the raw picture, or a background-blurred copy of it.
+async function applyBlur() {
+  if (!cameraTrack) return
+  const source = cameraTrack
+  blurred?.stop()
+  blurred = null
+  if (useVoice.getState().blur) {
+    useVoice.setState({ blurBusy: true })
+    try {
+      const { blurBackground } = await import('./blur')
+      const made = await blurBackground(source)
+      // The camera may have been switched off, or blur turned off, while the model loaded.
+      if (cameraTrack !== source || !useVoice.getState().blur) made.stop()
+      else blurred = made
+    } catch (e) {
+      console.warn('background blur unavailable', e)
+      useVoice.setState({ blur: false, camError: 'Background blur is not available in this browser' })
+    }
+    useVoice.setState({ blurBusy: false })
+  }
+  if (cameraTrack !== source) return
+  videoTrack = blurred?.track ?? source
+  publishLocal()
+  peers.forEach((p) => attachLocal(p.pc))
+}
+
 export async function toggleCam() {
   if (!ready) return
-  if (videoTrack) {
-    videoTrack.stop()
-    videoTrack = null
+  if (cameraTrack) {
+    stopCamera()
   } else {
     try {
       const stream = await media.getUserMedia({ video: { width: 640, height: 360, facingMode: 'user' } })
-      videoTrack = stream.getVideoTracks()[0] ?? null
+      cameraTrack = stream.getVideoTracks()[0] ?? null
       useVoice.setState({ camError: null })
+      // With blur on, nothing is sent until the blurred picture is ready.
+      if (useVoice.getState().blur) await applyBlur()
+      else videoTrack = cameraTrack
     } catch (e) {
       useVoice.setState({ camError: `Camera ${describe(e)}` })
     }
@@ -245,6 +296,17 @@ export async function toggleCam() {
   publishLocal()
   peers.forEach((p) => attachLocal(p.pc))
   tellEveryone()
+}
+
+export async function toggleBlur() {
+  const blur = !useVoice.getState().blur
+  useVoice.setState({ blur, camError: null })
+  try {
+    localStorage.setItem(BLUR_KEY, blur ? '1' : '0')
+  } catch {
+    // The choice simply will not be remembered.
+  }
+  await applyBlur()
 }
 
 let started = false
@@ -258,4 +320,4 @@ export function startVoice() {
   reconcile()
 }
 
-if (import.meta.env.DEV) Object.assign((window as any).__game, { voice: { useVoice, media, peers, levels, toggleMic, toggleCam } })
+if (import.meta.env.DEV) Object.assign((window as any).__game, { voice: { useVoice, media, peers, levels, toggleMic, toggleCam, toggleBlur } })

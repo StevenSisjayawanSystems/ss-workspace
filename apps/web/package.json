@@ -4,14 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -p . && vite build",
+    "dev": "node scripts/copy-mediapipe.mjs && vite",
+    "build": "node scripts/copy-mediapipe.mjs && tsc -p . && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p ."
   },
   "dependencies": {
     "@colyseus/sdk": "^0.18.5",
     "@guildhouse/shared": "workspace:^",
+    "@mediapipe/tasks-vision": "^1.1.0",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.1",
     "@react-three/postprocessing": "^3.1.3",
