@@ -67,6 +67,7 @@ const NO_MUSIC: JukeState = { queue: [], startedAt: 0, paused: false, pausedAt: 
 export const useNet = create<NetState>(() => ({ inCall: false, call: [], taken: {}, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
 
 const SEND_MS = 80
+const CONNECT_TIMEOUT_MS = 8000
 const SERVER_URL: string = import.meta.env.VITE_SERVER_URL ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.hostname}:2567`
 
 let room: Room<any> | null = null
@@ -207,7 +208,22 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
   useNet.setState({ status: 'connecting' })
   try {
     const { robe, trim, hair, hat } = profile.look
-    const joined = await new Client(SERVER_URL).joinOrCreate<any>('office', { name: profile.name, robe, trim, hair, hat, code })
+    // An unreachable server can leave the browser waiting a long time; give up after a few seconds
+    // so the title screen never hangs, and drop the connection if it turns up late.
+    const attempt = new Client(SERVER_URL).joinOrCreate<any>('office', { name: profile.name, robe, trim, hair, hat, code })
+    const joined = await Promise.race([
+      attempt,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => {
+          attempt
+            .then((late) => {
+              if (late !== room) void late.leave()
+            })
+            .catch(() => {})
+          reject(new Error('timed out'))
+        }, CONNECT_TIMEOUT_MS),
+      ),
+    ])
     room = joined
     const selfId = joined.sessionId
     useNet.setState({ status: 'online', selfId })
