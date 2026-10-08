@@ -7,14 +7,19 @@ import type { Blurred } from './blur'
 
 export interface PeerView {
   stream: MediaStream
+  // Their shared screen, when `screen` is true.
+  screenStream: MediaStream
   mic: boolean
   cam: boolean
+  screen: boolean
   connected: boolean
 }
 
 interface VoiceState {
   mic: boolean
   cam: boolean
+  // Our own shared screen, when sharing.
+  screen: MediaStream | null
   // Why we have no microphone or camera, if we asked and were refused.
   micError: string | null
   camError: string | null
@@ -36,7 +41,7 @@ function savedBlur() {
   }
 }
 
-export const useVoice = create<VoiceState>(() => ({ mic: true, cam: false, micError: null, camError: null, local: null, peers: {}, focus: false, blur: savedBlur(), blurBusy: false }))
+export const useVoice = create<VoiceState>(() => ({ mic: true, cam: false, screen: null, micError: null, camError: null, local: null, peers: {}, focus: false, blur: savedBlur(), blurBusy: false }))
 
 // How loudly each person is speaking right now, 0 to 1, keyed by session id ('self' for us).
 // Kept outside React: tiles read it every frame.
@@ -83,12 +88,17 @@ function meter(id: string, stream: MediaStream | null) {
 // Swappable so tests can feed synthetic audio and video.
 export const media = {
   getUserMedia: (c: MediaStreamConstraints) => navigator.mediaDevices.getUserMedia(c),
+  getDisplayMedia: () => navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 15 }, audio: false }),
 }
+
+// Phones and some browsers cannot share a screen.
+export const canShareScreen = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia
 
 
 interface Peer {
   pc: RTCPeerConnection
   stream: MediaStream
+  screenStream: MediaStream
   queued: RTCIceCandidateInit[]
 }
 const peers = new Map<string, Peer>()
@@ -97,6 +107,7 @@ let audioTrack: MediaStreamTrack | null = null
 let videoTrack: MediaStreamTrack | null = null
 let cameraTrack: MediaStreamTrack | null = null
 let blurred: Blurred | null = null
+let screenTrack: MediaStreamTrack | null = null
 let ready: Promise<void> | null = null
 
 const describe = (e: unknown) => (e instanceof DOMException && e.name === 'NotAllowedError' ? 'blocked in the browser' : 'not available')
@@ -112,28 +123,32 @@ function view(id: string, patch: Partial<PeerView>) {
   const peer = peers.get(id)
   if (!peer) return
   useVoice.setState((s) => ({
-    peers: { ...s.peers, [id]: { mic: true, cam: false, connected: false, ...(s.peers[id] as PeerView | undefined), ...patch, stream: peer.stream } },
+    peers: { ...s.peers, [id]: { mic: true, cam: false, screen: false, connected: false, ...(s.peers[id] as PeerView | undefined), ...patch, stream: peer.stream, screenStream: peer.screenStream } },
   }))
 }
 
-const tellState = (id: string) => sendRtc(id, { state: { mic: useVoice.getState().mic && !!audioTrack, cam: !!videoTrack } })
+const tellState = (id: string) => sendRtc(id, { state: { mic: useVoice.getState().mic && !!audioTrack, cam: !!videoTrack, screen: !!screenTrack } })
 const tellEveryone = () => peers.forEach((_, id) => tellState(id))
 
-// Puts our current microphone and camera on every sending slot of a connection.
+// Every connection carries three slots, always in this order: microphone, camera, shared screen.
+const SCREEN_SLOT = 2
+
+// Puts our current microphone, camera and screen on the sending slots of a connection.
 function attachLocal(pc: RTCPeerConnection) {
-  for (const t of pc.getTransceivers()) {
+  pc.getTransceivers().forEach((t, slot) => {
     t.direction = 'sendrecv'
-    void t.sender.replaceTrack(t.receiver.track.kind === 'audio' ? audioTrack : videoTrack)
-  }
+    void t.sender.replaceTrack(slot === 0 ? audioTrack : slot === SCREEN_SLOT ? screenTrack : videoTrack)
+  })
 }
 
 function createPeer(id: string): Peer {
   const pc = new RTCPeerConnection({ iceServers: ice.servers })
-  const peer: Peer = { pc, stream: new MediaStream(), queued: [] }
+  const peer: Peer = { pc, stream: new MediaStream(), screenStream: new MediaStream(), queued: [] }
   peers.set(id, peer)
   pc.onicecandidate = (e) => e.candidate && sendRtc(id, { candidate: e.candidate.toJSON() })
   pc.ontrack = (e) => {
-    peer.stream.addTrack(e.track)
+    if (pc.getTransceivers().indexOf(e.transceiver) === SCREEN_SLOT) peer.screenStream.addTrack(e.track)
+    else peer.stream.addTrack(e.track)
     meter(id, peer.stream)
     view(id, {})
   }
@@ -157,8 +172,9 @@ function closePeer(id: string) {
 
 async function offer(id: string) {
   const { pc } = createPeer(id)
-  // Both slots exist from the start, so switching the camera on later needs no renegotiation.
+  // All three slots exist from the start, so turning the camera or screen share on later needs no renegotiation.
   pc.addTransceiver('audio', { direction: 'sendrecv' })
+  pc.addTransceiver('video', { direction: 'sendrecv' })
   pc.addTransceiver('video', { direction: 'sendrecv' })
   attachLocal(pc)
   await pc.setLocalDescription(await pc.createOffer())
@@ -169,7 +185,7 @@ async function handle(from: string, data: any) {
   if (!ready || !data) return
   await ready
   if (!useNet.getState().call.includes(from)) return
-  if (data.state) return view(from, { mic: !!data.state.mic, cam: !!data.state.cam })
+  if (data.state) return view(from, { mic: !!data.state.mic, cam: !!data.state.cam, screen: !!data.state.screen })
   if (data.sdp?.type === 'offer') {
     closePeer(from)
     const peer = createPeer(from)
@@ -210,9 +226,10 @@ function leave() {
   for (const id of [...peers.keys()]) closePeer(id)
   audioTrack?.stop()
   stopCamera()
-  audioTrack = null
+  screenTrack?.stop()
+  audioTrack = screenTrack = null
   meter('self', null)
-  useVoice.setState({ focus: false, cam: false, local: null, peers: {}, micError: null, camError: null })
+  useVoice.setState({ focus: false, cam: false, screen: null, local: null, peers: {}, micError: null, camError: null })
 }
 
 // Of each pair, the one with the smaller id calls the other, so the two never call at once.
@@ -298,6 +315,35 @@ export async function toggleCam() {
   tellEveryone()
 }
 
+export async function toggleScreen() {
+  if (!ready) return
+  if (screenTrack) {
+    screenTrack.stop()
+    screenTrack = null
+  } else {
+    try {
+      const track = (await media.getDisplayMedia()).getVideoTracks()[0] ?? null
+      screenTrack = track
+      // The browser's own "Stop sharing" bar ends the track without going through our button.
+      track?.addEventListener('ended', () => {
+        if (screenTrack !== track) return
+        screenTrack = null
+        afterScreenChange()
+      })
+    } catch {
+      // Dismissing the browser's picker is not an error worth reporting.
+      return
+    }
+  }
+  afterScreenChange()
+}
+
+function afterScreenChange() {
+  useVoice.setState({ screen: screenTrack ? new MediaStream([screenTrack]) : null })
+  peers.forEach((p) => attachLocal(p.pc))
+  tellEveryone()
+}
+
 export async function toggleBlur() {
   const blur = !useVoice.getState().blur
   useVoice.setState({ blur, camError: null })
@@ -320,4 +366,4 @@ export function startVoice() {
   reconcile()
 }
 
-if (import.meta.env.DEV) Object.assign((window as any).__game, { voice: { useVoice, media, peers, levels, toggleMic, toggleCam, toggleBlur } })
+if (import.meta.env.DEV) Object.assign((window as any).__game, { voice: { useVoice, media, peers, levels, toggleMic, toggleCam, toggleBlur, toggleScreen } })

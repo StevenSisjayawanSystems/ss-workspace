@@ -4,6 +4,8 @@ import * as THREE from 'three'
 import { GRID_H, GRID_W, WALK_SPEED, circleFree, route, seatById, zoneAt, type Point } from '@guildhouse/shared'
 import { inReach, input, player, useGame } from '../game'
 import type { AvatarLook } from '../look'
+import { addDistance, useStats } from '../stats'
+import { levelOf, xpOf } from '@guildhouse/shared'
 import { requestSit, standUp, useNet } from '../net/net'
 import { Avatar } from './Avatar'
 import { glow } from './toon'
@@ -24,6 +26,7 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
   const held = useRef(new Set<string>())
   const walkTarget = useGame((s) => s.walkTarget)
   const snaps = useGame((s) => s.snaps)
+  const rank = useStats((s) => levelOf(xpOf(s.progress)).level)
   const bubble = useNet((s) => (s.selfId ? s.bubbles[s.selfId]?.text : undefined))
 
   useEffect(() => {
@@ -102,6 +105,7 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
     }
     player.x += dx
     player.z += dz
+    if (dx || dz) addDistance(Math.hypot(dx, dz))
     moving.current = player.moving = Math.hypot(dx, dz) > 1e-4
     if (moving.current) {
       const want = Math.atan2(dx, dz)
@@ -141,7 +145,7 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
         <ringGeometry args={[0.22, 0.3, 24]} />
       </mesh>
       <group ref={group}>
-        <Avatar name={name} look={look} moving={moving} seated={seated} bubble={bubble} />
+        <Avatar name={name} rank={rank} look={look} moving={moving} seated={seated} bubble={bubble} />
       </group>
     </>
   )

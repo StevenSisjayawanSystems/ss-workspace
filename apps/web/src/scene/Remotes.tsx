@@ -9,6 +9,7 @@ function RemoteAvatar({ id }: { id: string }) {
   const moving = useRef(false)
   const seated = useRef(false)
   const bubble = useNet((s) => s.bubbles[id]?.text)
+  const rank = useNet((s) => s.ranks[id])
   const info = remotes.get(id)
 
   useFrame((_, dt) => {
@@ -34,7 +35,7 @@ function RemoteAvatar({ id }: { id: string }) {
   if (!info) return null
   return (
     <group ref={group} position={[info.x, 0, info.z]}>
-      <Avatar name={info.name} look={info.look} moving={moving} seated={seated} bubble={bubble} />
+      <Avatar name={info.name} rank={rank} look={info.look} moving={moving} seated={seated} bubble={bubble} />
     </group>
   )
 }

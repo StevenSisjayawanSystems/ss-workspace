@@ -20,6 +20,12 @@ export const Player = schema(
     hat: t.boolean(),
     // Id of the seat this player is in, or '' when standing. Seated players in a room share its call.
     seat: t.string(),
+    // Server time this player arrived, so everyone can see how long they have been in.
+    joinedAt: t.number(),
+    // Self-reported standing, shown to others. Kept by each browser until there are accounts.
+    level: t.number(),
+    totalSeconds: t.number(),
+    streak: t.number(),
   },
   'Player',
 )
@@ -95,6 +101,11 @@ export class OfficeRoom extends Room {
       this.clients.find((c) => c.sessionId === msg.to)?.send('rtc', { from: client.sessionId, data: msg.data })
     })
 
+    this.onMessage('progress', (client: Client, msg: Record<string, unknown>) => {
+      const p = this.state.players.get(client.sessionId)
+      if (p && msg) this.setStanding(p, msg)
+    })
+
     this.onMessage('chat', (client: Client, raw: unknown) => {
       const p = this.state.players.get(client.sessionId)
       const text = cleanText(raw, 240)
@@ -153,6 +164,13 @@ export class OfficeRoom extends Room {
     return 'YouTube video'
   }
 
+  private setStanding(p: Player, from: Record<string, unknown>) {
+    const whole = (v: unknown, max: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(0, Math.floor(v))) : 0)
+    p.level = Math.max(1, whole(from.level, 999))
+    p.totalSeconds = whole(from.totalSeconds, 1e9)
+    p.streak = whole(from.streak, 100000)
+  }
+
   // The door: with INVITE_CODE set, nobody gets in without it.
   onAuth(_client: Client, options: Record<string, unknown> = {}) {
     if (!inviteAccepted(options?.code)) throw new ServerError(INVITE_REJECTED, 'invite')
@@ -175,6 +193,8 @@ export class OfficeRoom extends Room {
     p.hair = cleanColor(options.hair, '#7a4a2a')
     p.hat = options.hat !== false
     p.seat = ''
+    p.joinedAt = Date.now()
+    this.setStanding(p, options)
     this.state.players.set(client.sessionId, p)
     this.lastMove.set(client.sessionId, Date.now())
     client.send('snap', { x: p.x, z: p.z })

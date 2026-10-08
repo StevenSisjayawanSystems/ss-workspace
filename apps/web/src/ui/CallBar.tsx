@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { QUIET_ZONES, roomById, seatById } from '@guildhouse/shared'
 import { useGame } from '../game'
 import { remotes, standUp, useNet } from '../net/net'
-import { levels, startVoice, toggleBlur, toggleCam, toggleMic, useVoice } from '../voice/voice'
+import { canShareScreen, levels, startVoice, toggleBlur, toggleCam, toggleMic, toggleScreen, useVoice } from '../voice/voice'
 import { Chat } from './Chat'
 import { Icon } from './icons'
 
@@ -22,6 +22,19 @@ function Stream({ stream, video, muted }: { stream: MediaStream | null; video: b
 }
 
 const SPEAKING = 0.08
+
+// A shared screen gets its own tile: no sound, no speaking ring, and shown whole instead of cropped.
+function ScreenTile({ name, stream }: { name: string; stream: MediaStream }) {
+  return (
+    <div className="call-tile video screen">
+      <Stream stream={stream} video muted />
+      <div className="call-name">
+        <Icon.screen />
+        <span>{name}</span>
+      </div>
+    </div>
+  )
+}
 
 function Tile({ id, name, stream, cam, mic, self, waiting }: { id: string; name: string; stream: MediaStream | null; cam: boolean; mic: boolean; self?: boolean; waiting?: boolean }) {
   const el = useRef<HTMLDivElement>(null)
@@ -61,7 +74,7 @@ export function CallBar() {
   const profile = useGame((s) => s.profile)
   const call = useNet((s) => s.call)
   const inCall = useNet((s) => s.inCall)
-  const { mic, cam, micError, camError, local, peers, focus, blur, blurBusy } = useVoice()
+  const { mic, cam, micError, camError, local, peers, focus, blur, blurBusy, screen } = useVoice()
   useEffect(startVoice, [])
   useEffect(() => {
     if (!focus) return
@@ -92,6 +105,8 @@ export function CallBar() {
       </div>
       <div className="call-stage">
         <div className="call-tiles" data-count={call.length + 1}>
+          {screen && <ScreenTile name="Your screen" stream={screen} />}
+          {call.map((id) => peers[id]?.screen && <ScreenTile key={`${id}-screen`} name={`${remotes.get(id)?.name ?? 'Guest'}'s screen`} stream={peers[id].screenStream} />)}
           <Tile id="self" name={profile?.name ?? 'You'} stream={local} cam={cam} mic={micLive} self />
           {call.map((id) => {
             const p = peers[id]
@@ -111,6 +126,11 @@ export function CallBar() {
         <Btn label={blurBusy ? 'Preparing background blur' : blur ? 'Stop blurring my background' : 'Blur my background'} on={blur} onClick={() => void toggleBlur()}>
           <Icon.blur />
         </Btn>
+        {canShareScreen && (
+          <Btn label={screen ? 'Stop sharing my screen' : 'Share my screen'} on={!!screen} onClick={() => void toggleScreen()}>
+            <Icon.screen />
+          </Btn>
+        )}
         <Btn label={focus ? 'Back to the office' : 'Focus on the call'} on={focus} onClick={() => useVoice.setState({ focus: !focus })}>
           {focus ? <Icon.shrink /> : <Icon.expand />}
         </Btn>

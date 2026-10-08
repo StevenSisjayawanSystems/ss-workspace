@@ -110,6 +110,13 @@ describe('office room', () => {
     expect(players(b)[a.sessionId].seat).toBe('')
     expect(circleFree(players(b)[a.sessionId].x, players(b)[a.sessionId].z)).toBe(true)
 
+    // Standing: arrival time is the server's; level and totals are reported by the client and sanitised.
+    expect(Date.now() - players(b)[a.sessionId].joinedAt).toBeLessThan(60000)
+    expect(players(b)[a.sessionId].level).toBe(1)
+    a.send('progress', { level: 4.7, totalSeconds: 7260, streak: -3 })
+    await wait(200)
+    expect(players(b)[a.sessionId]).toMatchObject({ level: 4, totalSeconds: 7260, streak: 0 })
+
     const errors: string[] = []
     a.onMessage('juke:error', (m: string) => errors.push(m))
     a.onMessage('clock', () => {})

@@ -3,7 +3,9 @@ import { GRID_H, GRID_W, ROOMS, roomById } from '@guildhouse/shared'
 import { player, useGame } from '../game'
 import { remotes, useNet } from '../net/net'
 import { clockText, localHour, skyAt } from '../time'
+import { useStats } from '../stats'
 import { Icon } from './icons'
+import { Roster } from './Roster'
 
 function MiniMap() {
   const dot = useRef<SVGCircleElement>(null)
@@ -82,15 +84,27 @@ export function Hud() {
   const status = useNet((s) => s.status)
   const count = useNet((s) => s.ids.length)
   const touch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
+  const [roster, setRoster] = useState(false)
+  const toast = useStats((s) => s.toast)
   return (
     <div className="hud">
       <div className="banner" key={zone}>
         <div className="banner-name">{room.name}</div>
         <div className="banner-blurb">{room.blurb}</div>
       </div>
-      <div className={`status ${status}`}>
+      <button className={`status ${status}`} title="Who is here, and your progress" onClick={() => setRoster(!roster)}>
         {status === 'online' ? `${count + 1} in the guildhouse` : status === 'connecting' ? 'Connecting…' : 'Offline, exploring solo'}
-      </div>
+      </button>
+      {roster && <Roster onClose={() => setRoster(false)} />}
+      {toast && (
+        <div className="toast" key={toast.title}>
+          <Icon.cheer />
+          <div>
+            <b>{toast.title}</b>
+            <span>{toast.detail}</span>
+          </div>
+        </div>
+      )}
       <Clock />
       <MiniMap />
       <div className="hint">{touch ? 'Tap to walk · pinch to zoom' : 'Click to walk · WASD to move · scroll to zoom'}</div>

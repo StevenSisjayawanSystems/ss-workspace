@@ -42,6 +42,7 @@ function loadApi() {
 }
 
 const VOLUME_KEY = 'guildhouse.volume'
+const MUTE_KEY = 'guildhouse.musicMuted'
 const savedVolume = () => {
   try {
     const v = Number(localStorage.getItem(VOLUME_KEY))
@@ -61,6 +62,14 @@ export function Jukebox() {
   const open = useGame((s) => s.jukeOpen)
   const setOpen = useGame((s) => s.setJukeOpen)
   const [volume, setVolume] = useState(savedVolume)
+  // Silences the music for you alone; everyone else keeps listening.
+  const [muted, setMuted] = useState(() => {
+    try {
+      return localStorage.getItem(MUTE_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
   const [url, setUrl] = useState('')
   const [ready, setReady] = useState(false)
   const [blocked, setBlocked] = useState(false)
@@ -149,13 +158,14 @@ export function Jukebox() {
   }, [ready, juke])
 
   useEffect(() => {
-    if (ready) yt.current?.setVolume(volume * (inTavern ? 1 : AWAY_VOLUME))
+    if (ready) yt.current?.setVolume(muted ? 0 : volume * (inTavern ? 1 : AWAY_VOLUME))
     try {
       localStorage.setItem(VOLUME_KEY, String(volume))
+      localStorage.setItem(MUTE_KEY, muted ? '1' : '0')
     } catch {
       // Volume simply will not be remembered.
     }
-  }, [ready, volume, inTavern])
+  }, [ready, volume, inTavern, muted])
 
   const add = (e: FormEvent) => {
     e.preventDefault()
@@ -182,6 +192,9 @@ export function Jukebox() {
             {current ? `${clock(elapsed)}${current.duration ? ` / ${clock(current.duration)}` : ''} · added by ${current.addedBy}` : 'Add a YouTube link to start'}
           </div>
         </div>
+        <button className={`icon-btn ${muted ? 'danger' : ''}`} aria-label={muted ? 'Unmute music for me' : 'Mute music for me'} title={muted ? 'Unmute music for me' : 'Mute music for me'} onClick={() => setMuted(!muted)}>
+          {muted ? <Icon.volumeOff /> : <Icon.volume />}
+        </button>
         {current && (
           <>
             <button className="icon-btn" aria-label={juke.paused ? 'Play' : 'Pause'} title={juke.paused ? 'Play' : 'Pause'} onClick={() => (juke.paused ? jukebox.play() : jukebox.pause())}>
@@ -209,7 +222,7 @@ export function Jukebox() {
         </form>
         {error && <div className="juke-error">{error}</div>}
         <label className="juke-volume">
-          <span>Volume{inTavern ? '' : ' (quieter outside the tavern)'}</span>
+          <span>{muted ? 'Muted for you' : `Volume${inTavern ? '' : ' (quieter outside the tavern)'}`}</span>
           <input type="range" min={0} max={100} value={volume} onChange={(e) => setVolume(Number(e.target.value))} />
         </label>
         {juke.queue.length > 1 && (

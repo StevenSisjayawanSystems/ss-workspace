@@ -3,6 +3,7 @@ import { create } from 'zustand'
 import { QUIET_ZONES, seatById, standSpot, type ZoneId } from '@guildhouse/shared'
 import { inReach, player, useGame, walkToSeat, type Profile } from '../game'
 import { DEFAULT_LOOK, type AvatarLook } from '../look'
+import { count, standing, type Standing } from '../stats'
 
 // Other players. `tx/tz/tfacing` are the latest server values; `x/z/facing` are what is drawn and ease towards them.
 export interface Remote {
@@ -11,6 +12,11 @@ export interface Remote {
   look: AvatarLook
   zone: string
   seat: string
+  // Server time they arrived, and their self-reported standing.
+  joinedAt: number
+  level: number
+  totalSeconds: number
+  streak: number
   x: number
   z: number
   facing: number
@@ -53,6 +59,9 @@ interface NetState {
   call: string[]
   // Occupied seats, by seat id, with the sitter's name.
   taken: Record<string, string>
+  // Level of each other player, for name plates; and when we ourselves arrived (server time).
+  ranks: Record<string, number>
+  selfJoinedAt: number
   juke: JukeState
   jukeError: string | null
   status: 'offline' | 'connecting' | 'online'
@@ -64,7 +73,7 @@ interface NetState {
 
 const NO_MUSIC: JukeState = { queue: [], startedAt: 0, paused: false, pausedAt: 0 }
 
-export const useNet = create<NetState>(() => ({ inCall: false, call: [], taken: {}, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
+export const useNet = create<NetState>(() => ({ inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
 
 const SEND_MS = 80
 const CONNECT_TIMEOUT_MS = 8000
@@ -116,6 +125,7 @@ const sameList = (a: string[], b: string[]) => a.length === b.length && a.every(
 // Our own seat comes from the server, which is what stops two people taking the same chair.
 let ignoreSeatUntil = 0
 function syncSelf(me: any) {
+  if (me.joinedAt && useNet.getState().selfJoinedAt !== me.joinedAt) useNet.setState({ selfJoinedAt: me.joinedAt })
   const game = useGame.getState()
   const serverSeat: string | null = me.seat || null
   if (serverSeat === game.seat) return
@@ -137,7 +147,9 @@ function syncCall() {
   const inCall = !!mySeat && !QUIET_ZONES.includes(mySeat.zone)
   const call: string[] = []
   const taken: Record<string, string> = {}
+  const ranks: Record<string, number> = {}
   for (const r of remotes.values()) {
+    ranks[r.id] = r.level
     if (!r.seat) continue
     taken[r.seat] = r.name
     if (inCall && seatById(r.seat)?.zone === mySeat!.zone) call.push(r.id)
@@ -148,6 +160,7 @@ function syncCall() {
   if (s.inCall !== inCall) patch.inCall = inCall
   if (!sameList(s.call, call)) patch.call = call
   if (JSON.stringify(s.taken) !== JSON.stringify(taken)) patch.taken = taken
+  if (JSON.stringify(s.ranks) !== JSON.stringify(ranks)) patch.ranks = ranks
   if (Object.keys(patch).length) useNet.setState(patch)
 }
 
@@ -166,6 +179,9 @@ function syncPlayers(state: any, selfId: string) {
       r.moving = p.moving
       r.zone = p.zone
       r.seat = p.seat
+      r.level = p.level
+      r.totalSeconds = p.totalSeconds
+      r.streak = p.streak
     } else {
       remotes.set(id, {
         id,
@@ -173,6 +189,10 @@ function syncPlayers(state: any, selfId: string) {
         look: { ...DEFAULT_LOOK, robe: p.robe, trim: p.trim, hair: p.hair, hat: p.hat },
         zone: p.zone,
         seat: p.seat,
+        joinedAt: p.joinedAt,
+        level: p.level,
+        totalSeconds: p.totalSeconds,
+        streak: p.streak,
         x: p.x, z: p.z, facing: p.facing,
         tx: p.x, tz: p.z, tfacing: p.facing,
         moving: p.moving,
@@ -192,7 +212,7 @@ function disconnected(profile: Profile) {
   jukeKey = ''
   room = null
   remotes.clear()
-  useNet.setState({ status: 'offline', selfId: null, ids: [], juke: NO_MUSIC, inCall: false, call: [], taken: {} })
+  useNet.setState({ status: 'offline', selfId: null, ids: [], juke: NO_MUSIC, inCall: false, call: [], taken: {}, ranks: {} })
   useGame.setState({ seat: null, pendingSeat: null })
   clearTimeout(retryTimer)
   retryTimer = setTimeout(() => connect(profile, inviteCode), 3000)
@@ -210,7 +230,7 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
     const { robe, trim, hair, hat } = profile.look
     // An unreachable server can leave the browser waiting a long time; give up after a few seconds
     // so the title screen never hangs, and drop the connection if it turns up late.
-    const attempt = new Client(SERVER_URL).joinOrCreate<any>('office', { name: profile.name, robe, trim, hair, hat, code })
+    const attempt = new Client(SERVER_URL).joinOrCreate<any>('office', { name: profile.name, robe, trim, hair, hat, code, ...standing() })
     const joined = await Promise.race([
       attempt,
       new Promise<never>((_, reject) =>
@@ -303,11 +323,20 @@ export const onRtc = (handler: (from: string, data: any) => void) => {
 export const sendRtc = (to: string, data: unknown) => room?.send('rtc', { to, data })
 export const callZone = (): ZoneId | null => seatById(useGame.getState().seat ?? '')?.zone ?? null
 
-export const sendChat = (text: string) => room?.send('chat', text)
+export const sendChat = (text: string) => {
+  if (!room) return
+  room.send('chat', text)
+  count('messages')
+}
+export const sendProgress = (s: Standing) => room?.send('progress', s)
 export const sendEmote = (emote: Emote) => room?.send('emote', emote)
 
 export const jukebox = {
-  add: (url: string) => room?.send('juke:add', url),
+  add: (url: string) => {
+    if (!room) return
+    room.send('juke:add', url)
+    count('songs')
+  },
   skip: () => room?.send('juke:skip'),
   remove: (id: string) => room?.send('juke:remove', id),
   pause: () => room?.send('juke:pause'),
