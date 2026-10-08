@@ -100,7 +100,7 @@ export function CallBar() {
   return (
     <div className={`call ${focus ? 'focus' : ''}`}>
       <div className="call-title">
-        {room}
+        <b>{room}</b>
         <span>{call.length ? `${call.length + 1} in call` : 'Just you so far'}</span>
       </div>
       <div className="call-stage">

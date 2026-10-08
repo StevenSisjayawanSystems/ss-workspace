@@ -126,13 +126,17 @@ export class OfficeRoom extends Room {
       const now = Date.now()
       juke.tick(jb, now)
       const finished = pomo.tick(timer, now)
-      // Everyone hears the bell; a finished focus session is what earns credit.
+      // Everyone hears the bell; only a finished focus session earns credit.
       if (finished) this.broadcast('pomo:done', { finished, round: timer.round })
     }, 1000)
 
     this.onMessage('pomo:start', (client: Client, m: { focusMin?: unknown; breakMin?: unknown }) => {
       const p = this.state.players.get(client.sessionId)
       if (p && m) pomo.start(timer, m.focusMin, m.breakMin, p.name, Date.now())
+    })
+    this.onMessage('pomo:timer', (client: Client, m: { minutes?: unknown }) => {
+      const p = this.state.players.get(client.sessionId)
+      if (p && m) pomo.startTimer(timer, m.minutes, p.name, Date.now())
     })
     this.onMessage('pomo:pause', () => pomo.pause(timer, Date.now()))
     this.onMessage('pomo:resume', () => pomo.resume(timer, Date.now()))

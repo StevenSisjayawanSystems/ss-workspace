@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { Pomodoro, pause, reset, resume, skip, start, tick } from './pomodoro'
+import { Pomodoro, pause, reset, resume, skip, start, startTimer, tick } from './pomodoro'
 
 const MIN = 60_000
 const fresh = () => {
@@ -9,13 +9,30 @@ const fresh = () => {
 }
 
 describe('shared pomodoro', () => {
-  it('only starts from an offered preset', () => {
+  it('accepts any whole-minute split within bounds and refuses the rest', () => {
     const p = fresh()
-    expect(start(p, 1, 1, 'Ada', 0)).toBe(false)
-    expect(start(p, '25', 5, 'Ada', 0)).toBe(false)
+    for (const [f, b] of [[0, 5], [181, 5], [25, 0], [25, 61], [25.5, 5], ['25', 5]] as [unknown, unknown][]) {
+      expect(start(p, f, b, 'Ada', 0)).toBe(false)
+      expect(p.phase).toBe('idle')
+    }
+    expect(start(p, 40, 8, 'Ada', 0)).toBe(true)
+    expect(p).toMatchObject({ phase: 'focus', endsAt: 40 * MIN, focusMin: 40, breakMin: 8, startedBy: 'Ada', round: 0 })
+  })
+
+  it('runs a plain timer once, then clears itself', () => {
+    const p = fresh()
+    expect(startTimer(p, 0, 'Ada', 0)).toBe(false)
+    expect(startTimer(p, 601, 'Ada', 0)).toBe(false)
+    expect(startTimer(p, 10, 'Ada', 0)).toBe(true)
+    expect(p).toMatchObject({ phase: 'timer', endsAt: 10 * MIN })
+    pause(p, 4 * MIN)
+    resume(p, 9 * MIN)
+    expect(tick(p, 14 * MIN)).toBeNull()
+    expect(tick(p, 15 * MIN)).toBe('timer')
     expect(p.phase).toBe('idle')
-    expect(start(p, 25, 5, 'Ada', 0)).toBe(true)
-    expect(p).toMatchObject({ phase: 'focus', endsAt: 25 * MIN, startedBy: 'Ada', round: 0 })
+    startTimer(p, 10, 'Ada', 0)
+    skip(p, MIN)
+    expect(p.phase).toBe('idle')
   })
 
   it('cycles focus and break, counting completed focus sessions, with a long fourth break', () => {

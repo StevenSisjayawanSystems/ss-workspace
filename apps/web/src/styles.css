@@ -1453,3 +1453,221 @@ button.status:hover {
     justify-content: center;
   }
 }
+
+/* Timer setup: mode tabs, quick choices, custom lengths */
+.pomo-pill.timer:not(.paused) {
+  border-color: var(--gold);
+}
+
+.pomo-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: 10px;
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.pomo-tabs button {
+  padding: 6px 0;
+  font: 700 11px var(--display);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.pomo-tabs button.on {
+  color: var(--teal-ink);
+  background: var(--gold);
+}
+
+.pomo-chips {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.pomo-chips button {
+  flex: 1;
+  padding: 8px 0;
+  font-weight: 800;
+  color: var(--gold);
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.pomo-chips button:hover {
+  border-color: var(--gold);
+}
+
+.pomo-custom {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(216, 178, 94, 0.18);
+  text-align: left;
+}
+
+.pomo-custom-label {
+  display: none;
+}
+
+.pomo-field {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.pomo-field span {
+  display: block;
+  margin-bottom: 4px;
+  font: 600 10px var(--display);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.pomo-field input {
+  width: 100%;
+  padding: 6px 34px 6px 9px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+  border-radius: 3px;
+  outline: none;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.pomo-field input::-webkit-outer-spin-button,
+.pomo-field input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.pomo-field input:focus {
+  border-color: var(--cream);
+}
+
+.pomo-field i {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  font-style: normal;
+  font-size: 11px;
+  color: #7f8aa0;
+}
+
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Focus view keeps the timer, the jukebox, incoming calls and announcements within reach.
+   Everything else in the heads-up display steps aside. */
+.call-title b {
+  font-weight: inherit;
+}
+
+.call.focus .call-title {
+  justify-content: flex-start;
+  align-items: baseline;
+  height: 34px;
+}
+
+body:has(.call.focus) .hud {
+  z-index: 31;
+}
+
+body:has(.call.focus) .hud > :not(.pomo-pill):not(.pomo):not(.ring):not(.toast) {
+  display: none;
+}
+
+body:has(.call.focus) .pomo-pill {
+  top: max(22px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+body:has(.call.focus) .pomo {
+  top: calc(max(22px, env(safe-area-inset-top)) + 38px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+body:has(.call.focus) .ring,
+body:has(.call.focus) .toast {
+  top: calc(max(22px, env(safe-area-inset-top)) + 44px);
+}
+
+body:has(.call.focus) .jukebox {
+  top: max(14px, env(safe-area-inset-top));
+  right: 24px;
+  z-index: 32;
+}
+
+/* Collapsed in focus view, the jukebox is a single slim row with a thumbnail of what is playing. */
+body:has(.call.focus) .jukebox:not(.open) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(340px, 34vw);
+}
+
+body:has(.call.focus) .jukebox:not(.open) .juke-head {
+  flex: 1;
+  min-width: 0;
+}
+
+body:has(.call.focus) .jukebox:not(.open) .juke-video {
+  flex: none;
+  width: 60px;
+  margin: 0;
+}
+
+.call.focus .call-stage {
+  margin-top: 30px;
+}
+
+@media (max-width: 720px) {
+  body:has(.call.focus) .jukebox:not(.open) {
+    width: min(250px, 60vw);
+  }
+
+  body:has(.call.focus) .pomo-pill,
+  body:has(.call.focus) .pomo {
+    left: max(14px, env(safe-area-inset-left));
+    transform: none;
+  }
+
+  body:has(.call.focus) .pomo-pill {
+    top: calc(max(22px, env(safe-area-inset-top)) + 56px);
+  }
+
+  body:has(.call.focus) .pomo {
+    top: calc(max(22px, env(safe-area-inset-top)) + 94px);
+  }
+
+  .call.focus .call-stage {
+    margin-top: 76px;
+  }
+}
+
+/* If the browser needs a tap to start sound, the prompt takes its own row under the slim jukebox. */
+body:has(.call.focus) .jukebox:not(.open) {
+  flex-wrap: wrap;
+}
+
+body:has(.call.focus) .jukebox:not(.open) .juke-tune {
+  order: 3;
+  flex: 0 0 100%;
+  margin-top: 0;
+}

@@ -56,7 +56,8 @@ export interface JukeState {
 
 // Mirrors the server's shared focus timer.
 export interface PomoState {
-  phase: 'idle' | 'focus' | 'break'
+  // 'timer' is a plain one-off countdown; `focusMin` then holds its length.
+  phase: 'idle' | 'focus' | 'break' | 'timer'
   endsAt: number
   paused: boolean
   remainingMs: number
@@ -192,12 +193,12 @@ function syncPomodoro(state: any) {
   const p = state.pomodoro
   if (!p) return
   const pomo: PomoState = {
-    phase: p.phase === 'focus' || p.phase === 'break' ? p.phase : 'idle',
+    phase: p.phase === 'focus' || p.phase === 'break' || p.phase === 'timer' ? p.phase : 'idle',
     endsAt: p.endsAt ?? 0,
     paused: !!p.paused,
     remainingMs: p.remainingMs ?? 0,
     focusMin: p.focusMin || 25,
-    breakMin: p.breakMin || 5,
+    breakMin: p.breakMin ?? 5,
     round: p.round ?? 0,
     startedBy: p.startedBy ?? '',
   }
@@ -310,9 +311,10 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
     joined.onMessage('ice', (servers: RTCIceServer[]) => {
       if (Array.isArray(servers) && servers.length) ice.servers = servers
     })
-    joined.onMessage('pomo:done', (m: { finished: 'focus' | 'break' }) => {
-      bell(m.finished === 'focus')
-      if (m.finished === 'focus') {
+    joined.onMessage('pomo:done', (m: { finished: 'focus' | 'break' | 'timer' }) => {
+      bell(m.finished !== 'break')
+      if (m.finished === 'timer') announce("Time's up", 'Timer finished')
+      else if (m.finished === 'focus') {
         count('pomodoros')
         announce('Break time', 'Focus session complete')
       } else announce('Back to focus', 'Break is over')
@@ -440,6 +442,7 @@ export function answerRing(accept: boolean) {
 
 export const pomodoro = {
   start: (focusMin: number, breakMin: number) => room?.send('pomo:start', { focusMin, breakMin }),
+  timer: (minutes: number) => room?.send('pomo:timer', { minutes }),
   pause: () => room?.send('pomo:pause'),
   resume: () => room?.send('pomo:resume'),
   skip: () => room?.send('pomo:skip'),
