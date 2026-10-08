@@ -5,6 +5,8 @@ import { remotes, useNet } from '../net/net'
 import { clockText, localHour, skyAt } from '../time'
 import { useStats } from '../stats'
 import { Icon } from './icons'
+import { Pomodoro } from './Pomodoro'
+import { Ring } from './Ring'
 import { Roster } from './Roster'
 
 function MiniMap() {
@@ -106,6 +108,8 @@ export function Hud() {
         </div>
       )}
       <Clock />
+      <Pomodoro />
+      <Ring />
       <MiniMap />
       <div className="hint">{touch ? 'Tap to walk · pinch to zoom' : 'Click to walk · WASD to move · scroll to zoom'}</div>
     </div>

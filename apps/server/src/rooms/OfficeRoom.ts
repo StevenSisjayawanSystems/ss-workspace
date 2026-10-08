@@ -1,9 +1,10 @@
 import { Room, ServerError, type Client } from 'colyseus'
 import { schema, t, type SchemaType } from '@colyseus/schema'
-import { QUIET_ZONES, SIT_REACH, SPAWN, nearestWalkable, parseYouTubeId, seatById, standSpot, zoneAt, type ZoneId } from '@guildhouse/shared'
+import { QUIET_ZONES, ROOMS, SIT_REACH, SPAWN, nearestWalkable, parseYouTubeId, seatById, standSpot, zoneAt, type ZoneId } from '@guildhouse/shared'
 import { inviteAccepted } from '../config'
 import { iceServers } from '../ice'
 import * as juke from '../jukebox'
+import * as pomo from '../pomodoro'
 import { cleanColor, cleanText, validMove } from '../rules'
 
 export const Player = schema(
@@ -31,7 +32,7 @@ export const Player = schema(
 )
 export type Player = SchemaType<typeof Player>
 
-export const OfficeState = schema({ players: t.map(Player), jukebox: juke.Jukebox }, 'OfficeState')
+export const OfficeState = schema({ players: t.map(Player), jukebox: juke.Jukebox, pomodoro: pomo.Pomodoro }, 'OfficeState')
 export type OfficeState = SchemaType<typeof OfficeState>
 
 // Close code sent when the invite code is missing or wrong.
@@ -44,6 +45,7 @@ export class OfficeRoom extends Room {
   state = new OfficeState()
   private lastMove = new Map<string, number>()
   private lastChat = new Map<string, number>()
+  private lastRing = new Map<string, number>()
   private adds: Promise<void> = Promise.resolve()
 
   onCreate() {
@@ -117,7 +119,41 @@ export class OfficeRoom extends Room {
 
     this.state.jukebox ??= new juke.Jukebox()
     const jb = this.state.jukebox
-    this.setSimulationInterval(() => juke.tick(jb, Date.now()), 1000)
+    this.state.pomodoro ??= new pomo.Pomodoro()
+    const timer = this.state.pomodoro
+    pomo.reset(timer)
+    this.setSimulationInterval(() => {
+      const now = Date.now()
+      juke.tick(jb, now)
+      const finished = pomo.tick(timer, now)
+      // Everyone hears the bell; a finished focus session is what earns credit.
+      if (finished) this.broadcast('pomo:done', { finished, round: timer.round })
+    }, 1000)
+
+    this.onMessage('pomo:start', (client: Client, m: { focusMin?: unknown; breakMin?: unknown }) => {
+      const p = this.state.players.get(client.sessionId)
+      if (p && m) pomo.start(timer, m.focusMin, m.breakMin, p.name, Date.now())
+    })
+    this.onMessage('pomo:pause', () => pomo.pause(timer, Date.now()))
+    this.onMessage('pomo:resume', () => pomo.resume(timer, Date.now()))
+    this.onMessage('pomo:skip', () => pomo.skip(timer, Date.now()))
+    this.onMessage('pomo:stop', () => pomo.reset(timer))
+
+    // Ringing someone: asks them to come and sit in on a call in the caller's room.
+    this.onMessage('ring', (client: Client, m: { to?: unknown; zone?: unknown }) => {
+      const from = this.state.players.get(client.sessionId)
+      const now = Date.now()
+      if (!from || !m || typeof m.to !== 'string' || m.to === client.sessionId) return
+      const zone = ROOMS.find((r) => r.id === m.zone)?.id
+      if (!zone || QUIET_ZONES.includes(zone) || now - (this.lastRing.get(client.sessionId) ?? 0) < 2000) return
+      this.lastRing.set(client.sessionId, now)
+      this.clients.find((c) => c.sessionId === m.to)?.send('ring', { from: client.sessionId, name: from.name, zone })
+    })
+    this.onMessage('ring:answer', (client: Client, m: { to?: unknown; accept?: unknown }) => {
+      const from = this.state.players.get(client.sessionId)
+      if (!from || !m || typeof m.to !== 'string') return
+      this.clients.find((c) => c.sessionId === m.to)?.send('ring:answer', { from: client.sessionId, name: from.name, accept: m.accept === true })
+    })
 
     // Lets clients line their clocks up with ours so everyone hears the same moment.
     this.onMessage('clock', (client: Client, t0: unknown) => client.send('clock', { t0, now: Date.now() }))
@@ -206,5 +242,6 @@ export class OfficeRoom extends Room {
     this.state.players.delete(client.sessionId)
     this.lastMove.delete(client.sessionId)
     this.lastChat.delete(client.sessionId)
+    this.lastRing.delete(client.sessionId)
   }
 }

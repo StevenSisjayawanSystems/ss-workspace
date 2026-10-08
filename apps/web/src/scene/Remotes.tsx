@@ -1,8 +1,10 @@
-import { useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useRef, useState } from 'react'
+import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
-import { remotes, useNet } from '../net/net'
+import { QUIET_ZONES, seatById } from '@guildhouse/shared'
+import { joinCallIn, remotes, ringPerson, useNet } from '../net/net'
 import { Avatar } from './Avatar'
+import { Label } from './Label'
 
 function RemoteAvatar({ id }: { id: string }) {
   const group = useRef<THREE.Group>(null!)
@@ -10,6 +12,7 @@ function RemoteAvatar({ id }: { id: string }) {
   const seated = useRef(false)
   const bubble = useNet((s) => s.bubbles[id]?.text)
   const rank = useNet((s) => s.ranks[id])
+  const [hover, setHover] = useState(false)
   const info = remotes.get(id)
 
   useFrame((_, dt) => {
@@ -33,9 +36,36 @@ function RemoteAvatar({ id }: { id: string }) {
   })
 
   if (!info) return null
+
+  // Clicking a person calls them over, or takes you to the call they are already in.
+  const theirCall = () => {
+    const seat = seatById(remotes.get(id)?.seat ?? '')
+    return seat && !QUIET_ZONES.includes(seat.zone) ? seat.zone : undefined
+  }
+  const over = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation()
+    setHover(true)
+    document.body.style.cursor = 'pointer'
+  }
+  const out = () => {
+    setHover(false)
+    document.body.style.cursor = ''
+  }
+  const click = (e: ThreeEvent<MouseEvent>) => {
+    e.stopPropagation()
+    if (e.delta > 8) return
+    const zone = theirCall()
+    if (zone) joinCallIn(zone)
+    else ringPerson(id)
+  }
+
   return (
     <group ref={group} position={[info.x, 0, info.z]}>
       <Avatar name={info.name} rank={rank} look={info.look} moving={moving} seated={seated} bubble={bubble} />
+      <mesh position={[0, 0.7, 0]} visible={false} onPointerOver={over} onPointerOut={out} onClick={click}>
+        <cylinderGeometry args={[0.34, 0.34, 1.4, 10]} />
+      </mesh>
+      {hover && !bubble && <Label text={theirCall() ? `Join ${info.name}'s call` : `Call ${info.name}`} y={info.look.hat ? 2.08 : 1.82} />}
     </group>
   )
 }

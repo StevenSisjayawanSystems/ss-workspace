@@ -117,6 +117,31 @@ describe('office room', () => {
     await wait(200)
     expect(players(b)[a.sessionId]).toMatchObject({ level: 4, totalSeconds: 7260, streak: 0 })
 
+    // Ringing: relayed to the one person with the caller's name and room; quiet rooms cannot be rung from.
+    const rings: any[] = []
+    const answers: any[] = []
+    b.onMessage('ring', (m: any) => rings.push(m))
+    a.onMessage('ring:answer', (m: any) => answers.push(m))
+    a.onMessage('pomo:done', () => {})
+    b.onMessage('pomo:done', () => {})
+    a.send('ring', { to: b.sessionId, zone: 'library' })
+    a.send('ring', { to: b.sessionId, zone: 'councilA' })
+    await wait(200)
+    expect(rings).toEqual([{ from: a.sessionId, name: 'Ada', zone: 'councilA' }])
+    b.send('ring:answer', { to: a.sessionId, accept: true })
+    await wait(200)
+    expect(answers).toEqual([{ from: b.sessionId, name: 'Ben', accept: true }])
+
+    // The shared timer is visible to everyone and controllable by anyone.
+    expect(b.state.pomodoro.phase).toBe('idle')
+    a.send('pomo:start', { focusMin: 25, breakMin: 5 })
+    await wait(200)
+    expect(b.state.pomodoro).toMatchObject({ phase: 'focus', startedBy: 'Ada', focusMin: 25 })
+    expect(b.state.pomodoro.endsAt - Date.now()).toBeGreaterThan(24 * 60000)
+    b.send('pomo:stop')
+    await wait(200)
+    expect(a.state.pomodoro.phase).toBe('idle')
+
     const errors: string[] = []
     a.onMessage('juke:error', (m: string) => errors.push(m))
     a.onMessage('clock', () => {})

@@ -4,7 +4,7 @@ import { BADGES, NEW_PROGRESS, formatDuration, levelOf, titleOf, visit, xpForLev
 describe('experience and levels', () => {
   it('derives experience from the counters', () => {
     expect(xpOf(NEW_PROGRESS)).toBe(0)
-    expect(xpOf({ ...NEW_PROGRESS, seconds: 3600, callSeconds: 600, messages: 3, songs: 1, metres: 250, days: 2 })).toBe(60 + 20 + 6 + 5 + 2 + 40)
+    expect(xpOf({ ...NEW_PROGRESS, seconds: 3600, callSeconds: 600, messages: 3, songs: 1, metres: 250, days: 2, pomodoros: 3 })).toBe(60 + 20 + 6 + 5 + 2 + 40 + 30)
   })
 
   it('levels up at increasing thresholds and reports progress through the level', () => {
@@ -41,7 +41,7 @@ describe('badges and durations', () => {
   it('awards badges from the counters', () => {
     const earned = (p: Parameters<typeof xpOf>[0]) => BADGES.filter((b) => b.earned(p)).map((b) => b.id)
     expect(earned(NEW_PROGRESS)).toEqual([])
-    expect(earned({ ...NEW_PROGRESS, messages: 1, songs: 2, callSeconds: 600, streak: 3 })).toEqual(['words', 'dj', 'table', 'regular'])
+    expect(earned({ ...NEW_PROGRESS, messages: 1, songs: 2, callSeconds: 600, streak: 3, pomodoros: 4 })).toEqual(['words', 'dj', 'table', 'focus', 'regular'])
   })
 
   it('formats durations compactly', () => {

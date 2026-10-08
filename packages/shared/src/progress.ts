@@ -9,6 +9,8 @@ export interface Progress {
   metres: number
   messages: number
   songs: number
+  // Shared focus sessions seen through to the bell.
+  pomodoros: number
   // Distinct days visited, and the current run of consecutive days.
   days: number
   streak: number
@@ -16,13 +18,14 @@ export interface Progress {
   lastDay: string
 }
 
-export const NEW_PROGRESS: Progress = { seconds: 0, callSeconds: 0, metres: 0, messages: 0, songs: 0, days: 0, streak: 0, lastDay: '' }
+export const NEW_PROGRESS: Progress = { seconds: 0, callSeconds: 0, metres: 0, messages: 0, songs: 0, pomodoros: 0, days: 0, streak: 0, lastDay: '' }
 
 export const XP_RULES = {
   perMinuteOnline: 1,
   perMinuteInCall: 2,
   perMessage: 2,
   perSong: 5,
+  perPomodoro: 10,
   perHundredMetres: 1,
   perDayVisited: 20,
 }
@@ -33,6 +36,7 @@ export function xpOf(p: Progress): number {
     Math.floor(p.callSeconds / 60) * XP_RULES.perMinuteInCall +
     p.messages * XP_RULES.perMessage +
     p.songs * XP_RULES.perSong +
+    p.pomodoros * XP_RULES.perPomodoro +
     Math.floor(p.metres / 100) * XP_RULES.perHundredMetres +
     p.days * XP_RULES.perDayVisited
   )
@@ -76,6 +80,7 @@ export const BADGES: Badge[] = [
   { id: 'words', name: 'First Words', how: 'Send a message', earned: (p) => p.messages >= 1 },
   { id: 'dj', name: 'Minstrel', how: 'Add a song to the jukebox', earned: (p) => p.songs >= 1 },
   { id: 'table', name: 'Round Table', how: 'Spend 10 minutes in a call', earned: (p) => p.callSeconds >= 600 },
+  { id: 'focus', name: 'Deep Work', how: 'Finish 4 focus sessions', earned: (p) => p.pomodoros >= 4 },
   { id: 'walker', name: 'Wanderer', how: 'Walk 1,000 metres', earned: (p) => p.metres >= 1000 },
   { id: 'regular', name: 'Regular', how: 'Visit 3 days in a row', earned: (p) => p.streak >= 3 },
   { id: 'devoted', name: 'Devoted', how: 'Visit 7 days in a row', earned: (p) => p.streak >= 7 },

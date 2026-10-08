@@ -68,6 +68,17 @@ export const Icon = {
       <path d="M6.500 3.500h3l1.500 4-2 1.500a11 11 0 0 0 6 6l1.500-2 4 1.500v3a2 2 0 0 1-2 2A15.500 15.500 0 0 1 4.500 5.500a2 2 0 0 1 2-2z" />
     </Svg>
   ),
+  timer: () => (
+    <Svg>
+      <circle cx="12" cy="13.500" r="7.500" />
+      <path d="M12 9.500v4l2.500 2M9.500 3h5M12 3v3" />
+    </Svg>
+  ),
+  stop: () => (
+    <Svg>
+      <rect x="6.500" y="6.500" width="11" height="11" rx="1.500" />
+    </Svg>
+  ),
   expand: () => (
     <Svg>
       <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />

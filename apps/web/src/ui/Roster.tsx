@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BADGES, QUIET_ZONES, formatDuration, levelOf, roomById, seatById, titleOf, xpOf, type ZoneId } from '@guildhouse/shared'
 import { useGame } from '../game'
-import { remotes, serverNow, useNet } from '../net/net'
+import { joinCallIn, remotes, ringPerson, serverNow, useNet } from '../net/net'
 import { useStats } from '../stats'
 import { Icon } from './icons'
 
@@ -11,6 +11,8 @@ interface Row {
   level: number
   zone: ZoneId
   inCall: boolean
+  // The room whose call they are seated in, if any.
+  callZone?: ZoneId
   onlineSeconds: number
   streak: number
   self?: boolean
@@ -52,6 +54,16 @@ function Person({ row }: { row: Row }) {
           )}
         </span>
       </div>
+      {!row.self &&
+        (row.callZone ? (
+          <button className="icon-btn on" aria-label={`Join ${row.name}'s call`} title={`Join ${row.name}'s call in ${roomById(row.callZone).name}`} onClick={() => joinCallIn(row.callZone!)}>
+            <Icon.phone />
+          </button>
+        ) : (
+          <button className="icon-btn" aria-label={`Call ${row.name}`} title={`Call ${row.name} to join you`} onClick={() => ringPerson(row.id)}>
+            <Icon.phone />
+          </button>
+        ))}
     </li>
   )
 }
@@ -78,7 +90,7 @@ export function Roster({ onClose }: { onClose: () => void }) {
     { id: 'self', name: profile?.name ?? 'You', level, zone, inCall: inCallAt(seat), onlineSeconds: selfJoinedAt ? (now - selfJoinedAt) / 1000 : 0, streak: progress.streak, self: true },
     ...ids.flatMap((id) => {
       const r = remotes.get(id)
-      return r ? [{ id, name: r.name, level: r.level || 1, zone: r.zone as ZoneId, inCall: inCallAt(r.seat), onlineSeconds: (now - r.joinedAt) / 1000, streak: r.streak }] : []
+      return r ? [{ id, name: r.name, level: r.level || 1, zone: r.zone as ZoneId, inCall: inCallAt(r.seat), callZone: inCallAt(r.seat) ? seatById(r.seat)!.zone : undefined, onlineSeconds: (now - r.joinedAt) / 1000, streak: r.streak }] : []
     }),
   ]
   const facts: [string, string][] = [
@@ -86,7 +98,7 @@ export function Roster({ onClose }: { onClose: () => void }) {
     ['In calls', formatDuration(progress.callSeconds)],
     ['Walked', `${Math.round(progress.metres).toLocaleString()} m`],
     ['Messages', progress.messages.toLocaleString()],
-    ['Songs queued', progress.songs.toLocaleString()],
+    ['Focus sessions', progress.pomodoros.toLocaleString()],
     ['Days visited', progress.days.toLocaleString()],
   ]
 

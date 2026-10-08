@@ -36,7 +36,7 @@ export interface Standing {
 export const standing = (p = useStats.getState().progress): Standing => ({ level: levelOf(xpOf(p)).level, totalSeconds: Math.floor(p.seconds), streak: p.streak })
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined
-function announce(title: string, detail: string) {
+export function announce(title: string, detail: string) {
   useStats.setState({ toast: { title, detail } })
   clearTimeout(toastTimer)
   toastTimer = setTimeout(() => useStats.setState({ toast: null }), 6000)
@@ -61,7 +61,7 @@ function commit(next: Progress) {
   } else if (badge) announce(badge.name, 'Badge earned')
 }
 
-export const count = (what: 'messages' | 'songs') => commit({ ...useStats.getState().progress, [what]: useStats.getState().progress[what] + 1 })
+export const count = (what: 'messages' | 'songs' | 'pomodoros') => commit({ ...useStats.getState().progress, [what]: useStats.getState().progress[what] + 1 })
 
 // Walking is reported every frame; it is folded into the saved progress on the next tick.
 let walked = 0

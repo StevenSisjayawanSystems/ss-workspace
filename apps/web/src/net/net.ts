@@ -1,9 +1,10 @@
 import { Client, type Room } from '@colyseus/sdk'
 import { create } from 'zustand'
-import { QUIET_ZONES, seatById, standSpot, type ZoneId } from '@guildhouse/shared'
+import { QUIET_ZONES, SEATS, roomById, seatById, standSpot, type Seat, type ZoneId } from '@guildhouse/shared'
 import { inReach, player, useGame, walkToSeat, type Profile } from '../game'
 import { DEFAULT_LOOK, type AvatarLook } from '../look'
-import { count, standing, type Standing } from '../stats'
+import { bell, ringtone } from '../sound'
+import { announce, count, standing, type Standing } from '../stats'
 
 // Other players. `tx/tz/tfacing` are the latest server values; `x/z/facing` are what is drawn and ease towards them.
 export interface Remote {
@@ -53,7 +54,29 @@ export interface JukeState {
   pausedAt: number
 }
 
+// Mirrors the server's shared focus timer.
+export interface PomoState {
+  phase: 'idle' | 'focus' | 'break'
+  endsAt: number
+  paused: boolean
+  remainingMs: number
+  focusMin: number
+  breakMin: number
+  round: number
+  startedBy: string
+}
+const NO_TIMER: PomoState = { phase: 'idle', endsAt: 0, paused: false, remainingMs: 0, focusMin: 25, breakMin: 5, round: 0, startedBy: '' }
+
+// Someone asking us to come and join their call.
+export interface Ring {
+  from: string
+  name: string
+  zone: ZoneId
+}
+
 interface NetState {
+  pomo: PomoState
+  ringing: Ring | null
   // True while we are seated in a room that has a call; `call` lists the others seated in that room.
   inCall: boolean
   call: string[]
@@ -73,7 +96,7 @@ interface NetState {
 
 const NO_MUSIC: JukeState = { queue: [], startedAt: 0, paused: false, pausedAt: 0 }
 
-export const useNet = create<NetState>(() => ({ inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
+export const useNet = create<NetState>(() => ({ pomo: NO_TIMER, ringing: null, inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
 
 const SEND_MS = 80
 const CONNECT_TIMEOUT_MS = 8000
@@ -164,6 +187,26 @@ function syncCall() {
   if (Object.keys(patch).length) useNet.setState(patch)
 }
 
+let pomoKey = ''
+function syncPomodoro(state: any) {
+  const p = state.pomodoro
+  if (!p) return
+  const pomo: PomoState = {
+    phase: p.phase === 'focus' || p.phase === 'break' ? p.phase : 'idle',
+    endsAt: p.endsAt ?? 0,
+    paused: !!p.paused,
+    remainingMs: p.remainingMs ?? 0,
+    focusMin: p.focusMin || 25,
+    breakMin: p.breakMin || 5,
+    round: p.round ?? 0,
+    startedBy: p.startedBy ?? '',
+  }
+  const key = JSON.stringify(pomo)
+  if (key === pomoKey) return
+  pomoKey = key
+  useNet.setState({ pomo })
+}
+
 function syncPlayers(state: any, selfId: string) {
   const seen = new Set<string>()
   const me = state.players?.get(selfId)
@@ -210,9 +253,11 @@ function disconnected(profile: Profile) {
   clearInterval(sendTimer)
   clearInterval(clockTimer)
   jukeKey = ''
+  pomoKey = ''
+  ringtone.stop()
   room = null
   remotes.clear()
-  useNet.setState({ status: 'offline', selfId: null, ids: [], juke: NO_MUSIC, inCall: false, call: [], taken: {}, ranks: {} })
+  useNet.setState({ status: 'offline', selfId: null, ids: [], juke: NO_MUSIC, pomo: NO_TIMER, ringing: null, inCall: false, call: [], taken: {}, ranks: {} })
   useGame.setState({ seat: null, pendingSeat: null })
   clearTimeout(retryTimer)
   retryTimer = setTimeout(() => connect(profile, inviteCode), 3000)
@@ -251,6 +296,7 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
     joined.onStateChange((state: any) => {
       syncPlayers(state, selfId)
       syncJukebox(state)
+      syncPomodoro(state)
     })
     joined.onMessage('clock', (m: { t0: number; now: number }) => {
       clockOffset = m.now - (m.t0 + Date.now()) / 2
@@ -263,6 +309,25 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
     clockTimer = setInterval(() => joined.send('clock', Date.now()), 30000)
     joined.onMessage('ice', (servers: RTCIceServer[]) => {
       if (Array.isArray(servers) && servers.length) ice.servers = servers
+    })
+    joined.onMessage('pomo:done', (m: { finished: 'focus' | 'break' }) => {
+      bell(m.finished === 'focus')
+      if (m.finished === 'focus') {
+        count('pomodoros')
+        announce('Break time', 'Focus session complete')
+      } else announce('Back to focus', 'Break is over')
+    })
+    joined.onMessage('ring', (m: Ring) => {
+      // A second caller while one is already ringing is simply ignored.
+      if (useNet.getState().ringing) return
+      useNet.setState({ ringing: m })
+      ringtone.start()
+      clearTimeout(ringTimeout)
+      ringTimeout = setTimeout(() => answerRing(false), RING_SECONDS * 1000)
+    })
+    joined.onMessage('ring:answer', (m: { name: string; accept: boolean }) => {
+      clearTimeout(noAnswer)
+      announce(m.name, m.accept ? 'is on the way' : 'cannot join right now')
     })
     joined.onMessage('rtc', (m: { from: string; data: unknown }) => rtcHandler?.(m.from, m.data))
     joined.onMessage('snap', (m: { x: number; z: number }) => useGame.getState().snapTo(m.x, m.z))
@@ -316,6 +381,71 @@ export function standUp() {
   room?.send('stand')
 }
 
+// The nearest free seat to us, optionally limited to one room. Quiet rooms never host calls.
+function freeSeat(zone?: ZoneId): Seat | undefined {
+  const taken = useNet.getState().taken
+  const mine = useGame.getState().seat
+  let best: Seat | undefined
+  let bestD = Infinity
+  for (const s of SEATS) {
+    if (QUIET_ZONES.includes(s.zone) || (zone && s.zone !== zone) || taken[s.id] || s.id === mine) continue
+    const d = Math.hypot(s.x - player.x, s.z - player.z)
+    if (d < bestD) {
+      bestD = d
+      best = s
+    }
+  }
+  return best
+}
+
+// Walks over and sits down in a room's call.
+export function joinCallIn(zone: ZoneId) {
+  if (seatById(useGame.getState().seat ?? '')?.zone === zone) return
+  const seat = freeSeat(zone)
+  if (seat) requestSit(seat.id)
+  else announce(roomById(zone).name, 'has no free seats')
+}
+
+const RING_SECONDS = 30
+let ringTimeout: ReturnType<typeof setTimeout> | undefined
+let noAnswer: ReturnType<typeof setTimeout> | undefined
+
+// Calls someone over. If we are not already seated in a call, we take the nearest free seat first,
+// preferring the room we are standing in, and invite them to that room.
+export function ringPerson(id: string) {
+  const them = remotes.get(id)
+  if (!room || !them) return
+  let seat = seatById(useGame.getState().seat ?? '')
+  if (!seat || QUIET_ZONES.includes(seat.zone)) {
+    const here = useGame.getState().zone
+    seat = (QUIET_ZONES.includes(here) ? undefined : freeSeat(here)) ?? freeSeat()
+    if (!seat) return
+    requestSit(seat.id)
+  }
+  room.send('ring', { to: id, zone: seat.zone })
+  announce(`Calling ${them.name}`, `to ${roomById(seat.zone).name}`)
+  clearTimeout(noAnswer)
+  noAnswer = setTimeout(() => announce(them.name, 'did not answer'), (RING_SECONDS + 2) * 1000)
+}
+
+export function answerRing(accept: boolean) {
+  const ring = useNet.getState().ringing
+  if (!ring) return
+  clearTimeout(ringTimeout)
+  ringtone.stop()
+  useNet.setState({ ringing: null })
+  room?.send('ring:answer', { to: ring.from, accept })
+  if (accept) joinCallIn(ring.zone)
+}
+
+export const pomodoro = {
+  start: (focusMin: number, breakMin: number) => room?.send('pomo:start', { focusMin, breakMin }),
+  pause: () => room?.send('pomo:pause'),
+  resume: () => room?.send('pomo:resume'),
+  skip: () => room?.send('pomo:skip'),
+  stop: () => room?.send('pomo:stop'),
+}
+
 let rtcHandler: ((from: string, data: any) => void) | undefined
 export const onRtc = (handler: (from: string, data: any) => void) => {
   rtcHandler = handler
@@ -345,7 +475,7 @@ export const jukebox = {
   duration: (id: string, duration: number) => room?.send('juke:duration', { id, duration }),
 }
 
-if (import.meta.env.DEV) Object.assign((window as any).__game, { net: { useNet, remotes, jukebox, sendChat, sendEmote, requestSit, standUp, connect } })
+if (import.meta.env.DEV) Object.assign((window as any).__game, { net: { useNet, remotes, jukebox, sendChat, sendEmote, requestSit, standUp, connect, ringPerson, answerRing, pomodoro } })
 
 // This module owns a live connection, so a hot update cannot be applied in place.
 import.meta.hot?.dispose(() => {
