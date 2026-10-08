@@ -13,6 +13,7 @@ import { Player } from './Player'
 import { Remotes } from './Remotes'
 import { Seats } from './Seats'
 import { Desks, ScheduleSigns } from './Reservations'
+import { FocusGarden } from './FocusGarden'
 import type { Profile } from '../game'
 import { localHour, sky, skyAt } from '../time'
 
@@ -97,10 +98,10 @@ const BACKDROP: [number, number, number][] = [
 ]
 const BUSHES: [number, number, number][] = [
   [-2, 5, 1], [-2.4, 12.5, 1.2], [-2, 19.5, 0.9], [6.5, -2.6, 1.1], [13.5, -2.8, 0.9], [20.5, -2.6, 1.2], [27, -1.6, 1],
-  [33, -1.8, 1.1], [35.8, 4, 1], [36, 11, 1.2], [35.8, 19, 0.9], [4, 26.2, 1], [8, 26.6, 1.2], [17, 26.2, 1], [22, 26.8, 1.1],
-  [28, 25.8, 1], [-1.8, 25.5, 1.1],
+  [33, -1.8, 1.1], [35.8, 4, 1], [36, 11, 1.2], [35.8, 19, 0.9], [4, 33.2, 1], [9, 33.6, 1.2], [16, 33.2, 1], [22.5, 33.4, 1.1],
+  [28, 25.8, 1], [-1.8, 25.5, 1.1], [0.5, 29, 1], [24, 29.5, 1.1],
 ]
-const ROCKS: [number, number, number][] = [[-5.5, 5.5, 1.3], [8, -6, 1.6], [31.5, -5.5, 1.2], [-6, 25, 1.1], [13, 27.5, 0.8], [37.5, 23.5, 1.3]]
+const ROCKS: [number, number, number][] = [[-5.5, 5.5, 1.3], [8, -6, 1.6], [31.5, -5.5, 1.2], [-6, 25, 1.1], [12.5, 34.5, 0.8], [37.5, 23.5, 1.3]]
 
 export function Scene({ profile }: { profile: Profile | null }) {
   const bloom = useRef<any>(null)
@@ -139,6 +140,7 @@ export function Scene({ profile }: { profile: Profile | null }) {
       <Wildflowers />
       <CloudShadows />
       {profile && <Player name={profile.name} look={profile.look} />}
+      <FocusGarden />
       <Remotes />
       {profile && <Seats />}
       {profile && <Desks />}

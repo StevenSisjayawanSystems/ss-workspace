@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { GRID_H, GRID_W, ROOMS, isWalkable, tileAt, zoneAt } from '@guildhouse/shared'
+import { GRID_H, GRID_W, ROOMS, isWalkable, onBed, tileAt, zoneAt } from '@guildhouse/shared'
 import { sky } from '../time'
 
 function rng(seed: number) {
@@ -81,7 +81,7 @@ export function Grass({ count = 24000 }: { count?: number }) {
       const tile = tileAt(tx, tz)
       const garden = OUTDOORS.has(zoneAt(tx, tz) ?? '')
       if (tile === 'wall' || tile === 'door' || tile === 'hedge') continue
-      if (onPath(x, z, 0.75)) continue
+      if (onPath(x, z, 0.75) || onBed(x, z)) continue
       if (tile === 'floor' && (!garden || !isWalkable(tx, tz))) continue
       // Thin the terrace so furniture and feet stay readable.
       if (garden && r() > 0.45) continue
@@ -114,8 +114,9 @@ export function Grass({ count = 24000 }: { count?: number }) {
 }
 
 // The lane that winds from the front door down through the meadow.
-const PATH_Z0 = GRID_H - 0.3
-const PATH_Z1 = GRID_H + 13
+// It starts at the front door (the building's south wall is at z = 24) and runs through the focus garden.
+const PATH_Z0 = 24.7
+const PATH_Z1 = 30.6
 const pathX = (z: number) => 12 + Math.sin((z - PATH_Z0) * 0.38) * 1.3
 const onPath = (x: number, z: number, half: number) => z > PATH_Z0 && z < PATH_Z1 && Math.abs(x - pathX(z)) < half
 

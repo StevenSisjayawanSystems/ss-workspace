@@ -8,22 +8,22 @@ import { PAL, glow, toon } from './toon'
 type V3 = [number, number, number]
 
 // Small primitives so each prop reads as a short list of parts.
-const B = ({ s, p, c, r }: { s: V3; p: V3; c: string; r?: V3 }) => (
+export const B = ({ s, p, c, r }: { s: V3; p: V3; c: string; r?: V3 }) => (
   <mesh position={p} rotation={r} material={toon(c)} castShadow receiveShadow>
     <boxGeometry args={s} />
   </mesh>
 )
-const C = ({ r, h, p, c, seg = 14, rot }: { r: number | [number, number]; h: number; p: V3; c: string; seg?: number; rot?: V3 }) => (
+export const C = ({ r, h, p, c, seg = 14, rot }: { r: number | [number, number]; h: number; p: V3; c: string; seg?: number; rot?: V3 }) => (
   <mesh position={p} rotation={rot} material={toon(c)} castShadow receiveShadow>
     <cylinderGeometry args={[typeof r === 'number' ? r : r[0], typeof r === 'number' ? r : r[1], h, seg]} />
   </mesh>
 )
-const S = ({ r, p, c, s }: { r: number; p: V3; c: string; s?: V3 }) => (
+export const S = ({ r, p, c, s }: { r: number; p: V3; c: string; s?: V3 }) => (
   <mesh position={p} scale={s} material={toon(c)} castShadow receiveShadow>
     <sphereGeometry args={[r, 14, 10]} />
   </mesh>
 )
-const G = ({ r, p, c, k = 1.8 }: { r: number; p: V3; c: string; k?: number }) => (
+export const G = ({ r, p, c, k = 1.8 }: { r: number; p: V3; c: string; k?: number }) => (
   <mesh position={p} material={glow(c, k)}>
     <sphereGeometry args={[r, 10, 8]} />
   </mesh>
@@ -52,7 +52,7 @@ function Flicker({ children, speed = 9, amount = 0.12 }: { children: ReactNode; 
   return <group ref={ref}>{children}</group>
 }
 
-function Sway({ children, amount = 0.04 }: { children: ReactNode; amount?: number }) {
+export function Sway({ children, amount = 0.04 }: { children: ReactNode; amount?: number }) {
   const ref = useRef<THREE.Group>(null!)
   const seed = useRef(Math.random() * 10)
   useFrame(({ clock }) => {
@@ -429,7 +429,7 @@ const PIECES: Record<FurnitureType, () => ReactNode> = {
   ),
 }
 
-function Bob({ children }: { children: ReactNode }) {
+export function Bob({ children }: { children: ReactNode }) {
   const ref = useRef<THREE.Group>(null!)
   useFrame(({ clock }) => {
     ref.current.position.y = Math.sin(clock.elapsedTime * 2) * 0.06

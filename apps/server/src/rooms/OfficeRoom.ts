@@ -4,6 +4,7 @@ import { QUIET_ZONES, ROOMS, SIT_REACH, SPAWN, nearestWalkable, parseYouTubeId, 
 import { config, inviteAccepted } from '../config'
 import { MAX_NOTES, MAX_NOTE_LENGTH, NOTE_COLORS, Note, NoteStore, type SavedNote } from '../notes'
 import { iceServers } from '../ice'
+import * as garden from '../garden'
 import * as juke from '../jukebox'
 import * as pomo from '../pomodoro'
 import * as res from '../reservations'
@@ -40,7 +41,7 @@ export const Player = schema(
 )
 export type Player = SchemaType<typeof Player>
 
-export const OfficeState = schema({ players: t.map(Player), jukebox: juke.Jukebox, pomodoro: pomo.Pomodoro, notes: t.array(Note), desks: t.array(res.DeskClaim), bookings: t.array(res.Booking), doors: t.array(res.ClosedDoor) }, 'OfficeState')
+export const OfficeState = schema({ players: t.map(Player), jukebox: juke.Jukebox, pomodoro: pomo.Pomodoro, notes: t.array(Note), desks: t.array(res.DeskClaim), bookings: t.array(res.Booking), doors: t.array(res.ClosedDoor), garden: t.array(garden.Plot) }, 'OfficeState')
 export type OfficeState = SchemaType<typeof OfficeState>
 
 // Close code sent when the invite code is missing or wrong.
@@ -57,6 +58,10 @@ export class OfficeRoom extends Room {
   private lastKnock = new Map<string, number>()
   private store = new NoteStore(config.dataDir)
   private reservations = new res.ReservationStore(config.dataDir)
+  private gardenStore = new garden.GardenStore(config.dataDir)
+  private lastTend = Date.now()
+  private lastGardenSave = 0
+  private unplanted = 0
   private adds: Promise<void> = Promise.resolve()
 
   onCreate() {
@@ -142,6 +147,14 @@ export class OfficeRoom extends Room {
       this.clients.find((c) => c.sessionId === msg.to)?.send('rtc', { from: client.sessionId, data: msg.data })
     })
 
+    // Focus garden
+    for (const saved of this.gardenStore.load()) {
+      const plot = new garden.Plot()
+      plot.name = saved.name
+      plot.seconds = saved.seconds
+      this.state.garden.push(plot)
+    }
+
     // Desks and meeting rooms
     this.reservations.restore(this.state, Date.now())
     const tell = (client: Client, problem: string | null, detail: string) => problem && client.send('notice', { title: problem, detail })
@@ -221,6 +234,7 @@ export class OfficeRoom extends Room {
       juke.tick(jb, now)
       if (res.expire(this.state, now)) this.saveReservations()
       res.reopenEmpty(this.state, this.occupied())
+      this.tendGarden(timer, now)
       const finished = pomo.tick(timer, now)
       // Everyone hears the bell; only a finished focus session earns credit.
       if (finished) this.broadcast('pomo:done', { finished, round: timer.round })
@@ -328,6 +342,28 @@ export class OfficeRoom extends Room {
     const zones = new Set<string>()
     this.state.players.forEach((p) => p.seat && zones.add(p.zone))
     return zones
+  }
+
+  // While a shared focus session is running, everyone present is growing their plant.
+  // Time is banked every second and planted in batches, so the garden does not flicker with updates.
+  private tendGarden(timer: pomo.Pomodoro, now: number) {
+    const elapsed = Math.min((now - this.lastTend) / 1000, 5)
+    this.lastTend = now
+    if (timer.phase === 'focus' && !timer.paused) this.unplanted += elapsed
+    if (this.unplanted >= 10 || (this.unplanted > 0 && timer.phase !== 'focus')) {
+      const present: string[] = []
+      this.state.players.forEach((p) => present.push(p.name))
+      garden.credit(this.state.garden, present, this.unplanted)
+      this.unplanted = 0
+      if (now - this.lastGardenSave > 60_000 || timer.phase !== 'focus') {
+        this.lastGardenSave = now
+        this.gardenStore.save(this.state.garden)
+      }
+    }
+  }
+
+  onDispose() {
+    this.gardenStore.save(this.state.garden)
   }
 
   private saveReservations() {

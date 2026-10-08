@@ -104,6 +104,8 @@ export interface Knock {
 }
 
 interface NetState {
+  // Focus Garden beds in the order they were first planted: who, and their total focus time.
+  garden: { name: string; seconds: number }[]
   // Claimed workroom desks (desk id -> owner's name), the meeting room schedule, and rooms whose door is closed (zone -> who closed it).
   desks: Record<string, string>
   bookings: BookingItem[]
@@ -133,7 +135,7 @@ interface NetState {
 
 const NO_MUSIC: JukeState = { queue: [], startedAt: 0, paused: false, pausedAt: 0 }
 
-export const useNet = create<NetState>(() => ({ desks: {}, bookings: [], closed: {}, knock: null, notes: [], statuses: {}, pomo: NO_TIMER, ringing: null, inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
+export const useNet = create<NetState>(() => ({ garden: [], desks: {}, bookings: [], closed: {}, knock: null, notes: [], statuses: {}, pomo: NO_TIMER, ringing: null, inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
 
 const SEND_MS = 80
 const CONNECT_TIMEOUT_MS = 8000
@@ -237,6 +239,16 @@ function syncNotes(state: any) {
   useNet.setState({ notes })
 }
 
+let gardenKey = ''
+function syncGarden(state: any) {
+  const garden: { name: string; seconds: number }[] = []
+  state.garden?.forEach((p: any) => garden.push({ name: p.name, seconds: p.seconds }))
+  const key = JSON.stringify(garden)
+  if (key === gardenKey) return
+  gardenKey = key
+  useNet.setState({ garden })
+}
+
 let reservationsKey = ''
 function syncReservations(state: any) {
   const desks: Record<string, string> = {}
@@ -331,6 +343,7 @@ function disconnected(profile: Profile) {
   pomoKey = ''
   notesKey = ''
   reservationsKey = ''
+  gardenKey = ''
   ringtone.stop()
   room = null
   remotes.clear()
@@ -376,6 +389,7 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
       syncPomodoro(state)
       syncNotes(state)
       syncReservations(state)
+      syncGarden(state)
     })
     joined.onMessage('clock', (m: { t0: number; now: number }) => {
       clockOffset = m.now - (m.t0 + Date.now()) / 2

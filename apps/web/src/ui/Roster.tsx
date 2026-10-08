@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BADGES, QUIET_ZONES, formatDuration, levelOf, roomById, seatById, titleOf, xpOf, type ZoneId } from '@guildhouse/shared'
+import { BADGES, PLANT_SECONDS, QUIET_ZONES, bedOf, formatDuration, levelOf, roomById, seatById, titleOf, xpOf, type ZoneId } from '@guildhouse/shared'
 import { useGame } from '../game'
 import { joinCallIn, remotes, ringPerson, serverNow, setStatus, useNet } from '../net/net'
 import { LEVELS_EXPLAINED } from './Profile'
@@ -81,6 +81,8 @@ export function Roster({ onClose }: { onClose: () => void }) {
   const seat = useGame((s) => s.seat)
   const progress = useStats((s) => s.progress)
   const myStatus = useGame((s) => s.status)
+  const myFocus = useNet((s) => s.garden.find((p) => p.name === profile?.name)?.seconds ?? 0)
+  const bed = bedOf(profile?.name ?? '', myFocus)
   const [custom, setCustom] = useState('')
   // Durations and other people's rooms change without any event we subscribe to.
   const [, refresh] = useState(0)
@@ -145,6 +147,22 @@ export function Roster({ onClose }: { onClose: () => void }) {
       >
         <input value={custom} maxLength={40} placeholder={STATUSES.includes(myStatus) || !myStatus ? 'Or write your own…' : myStatus} onChange={(e) => setCustom(e.target.value)} />
       </form>
+
+      <div className="roster-head">
+        <span>Your garden</span>
+      </div>
+      <div className="journey">
+        <div className="journey-rank">
+          <b>{bed.grown}</b> {bed.grown === 1 ? 'plant grown' : 'plants grown'}
+          <span>
+            {formatDuration(bed.towardsNext)} / 24h
+          </span>
+        </div>
+        <div className="journey-bar">
+          <div style={{ width: `${Math.max(1, Math.round((bed.towardsNext / PLANT_SECONDS) * 100))}%` }} />
+        </div>
+        <p className="profile-note">Every 24 hours of shared focus sessions grows a plant in your bed in the Focus Garden, out the front door.</p>
+      </div>
 
       <div className="roster-head">
         <span>Your journey</span>

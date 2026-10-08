@@ -12,6 +12,7 @@ export type ZoneId =
   | 'kitchen'
   | 'garden'
   | 'meditation'
+  | 'focusGarden'
 
 export type FloorKind = 'wood' | 'darkWood' | 'stone' | 'carpet' | 'tile' | 'grass'
 
@@ -28,7 +29,7 @@ export interface Room {
 }
 
 export const GRID_W = 35
-export const GRID_H = 25
+export const GRID_H = 32
 
 export const ROOMS: Room[] = [
   { id: 'library', name: 'Library Nooks', blurb: 'Quiet focus', x0: 1, z0: 1, x1: 7, z1: 6, floor: 'carpet' },
@@ -40,6 +41,8 @@ export const ROOMS: Room[] = [
   { id: 'tavern', name: 'Tavern Lounge', blurb: 'Music by the hearth', x0: 17, z0: 17, x1: 23, z1: 23, floor: 'darkWood' },
   { id: 'garden', name: 'Garden Terrace', blurb: 'Fresh air', x0: 25, z0: 1, x1: 33, z1: 14, floor: 'grass', outdoor: true },
   { id: 'meditation', name: 'Meditation Grove', blurb: 'Breathe', x0: 25, z0: 16, x1: 33, z1: 23, floor: 'grass', outdoor: true },
+  // Out of the front door: a bed for each person, planted by their focus sessions.
+  { id: 'focusGarden', name: 'Focus Garden', blurb: 'Grown from focus', x0: 3, z0: 25, x1: 21, z1: 30, floor: 'grass', outdoor: true },
 ]
 
 export const DOORS: { x: number; z: number }[] = [
@@ -54,6 +57,8 @@ export const DOORS: { x: number; z: number }[] = [
   { x: 24, z: 22 },
   // Garden gate into the meditation grove
   { x: 29, z: 15 },
+  // Front door, out to the focus garden
+  { x: 12, z: 24 },
 ]
 
 export const SPAWN = { x: 12, z: 21 }
@@ -209,6 +214,12 @@ export const FURNITURE: Furniture[] = [
   { type: 'lantern', x: 25, z: 10 },
   { type: 'lantern', x: 25, z: 13 },
 
+  // Focus garden: the beds themselves are drawn from who has grown what
+  { type: 'bench', x: 10, z: 30, rot: 2 },
+  { type: 'bench', x: 14, z: 30, rot: 2 },
+  { type: 'lantern', x: 3, z: 25 },
+  { type: 'lantern', x: 21, z: 25 },
+
   // Meditation grove: cushions in a ring around a quiet stone
   { type: 'meditationCircle', x: 29, z: 20 },
   { type: 'tree', x: 26, z: 17 },
@@ -240,7 +251,6 @@ export const WALL_DECOR: { type: WallDecorType; x: number; z: number; face: 's' 
   { type: 'window', x: 0, z: 10, face: 'e' },
   { type: 'window', x: 0, z: 13, face: 'e' },
   { type: 'window', x: 0, z: 20, face: 'e' },
-  { type: 'frontDoor', x: 12, z: 24, face: 's' },
 ]
 
 export type Tile = 'void' | 'floor' | 'wall' | 'hedge' | 'door'
