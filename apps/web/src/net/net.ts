@@ -116,6 +116,8 @@ interface NetState {
   statuses: Record<string, string>
   pomo: PomoState
   ringing: Ring | null
+  // Set when the server turned us away for lack of an invite code after we were already inside.
+  inviteNeeded: boolean
   // True while we are seated in a room that has a call; `call` lists the others seated in that room.
   inCall: boolean
   call: string[]
@@ -135,7 +137,7 @@ interface NetState {
 
 const NO_MUSIC: JukeState = { queue: [], startedAt: 0, paused: false, pausedAt: 0 }
 
-export const useNet = create<NetState>(() => ({ garden: [], desks: {}, bookings: [], closed: {}, knock: null, notes: [], statuses: {}, pomo: NO_TIMER, ringing: null, inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
+export const useNet = create<NetState>(() => ({ inviteNeeded: false, garden: [], desks: {}, bookings: [], closed: {}, knock: null, notes: [], statuses: {}, pomo: NO_TIMER, ringing: null, inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
 
 const SEND_MS = 80
 const CONNECT_TIMEOUT_MS = 8000
@@ -350,7 +352,14 @@ function disconnected(profile: Profile) {
   useNet.setState({ status: 'offline', selfId: null, ids: [], juke: NO_MUSIC, pomo: NO_TIMER, ringing: null, knock: null, desks: {}, bookings: [], closed: {}, inCall: false, call: [], taken: {}, ranks: {} })
   useGame.setState({ seat: null, pendingSeat: null })
   clearTimeout(retryTimer)
-  retryTimer = setTimeout(() => connect(profile, inviteCode), 3000)
+  retryTimer = setTimeout(async () => {
+    // If a background retry is refused for the invite code, wandering around alone forever helps nobody:
+    // go back to the title screen, which asks for the code.
+    if ((await connect(profile, inviteCode)) === 'invite' && useGame.getState().profile) {
+      useNet.setState({ inviteNeeded: true })
+      useGame.setState({ profile: null })
+    }
+  }, 3000)
 }
 
 // Joins the shared office. If the server is unreachable the office still works solo and we keep retrying.

@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { loadProfile, useGame } from '../game'
 import { loadInvite, rememberInvite } from '../invite'
 import { HAIRS, ROBES } from '../look'
-import { connect } from '../net/net'
+import { connect, useNet } from '../net/net'
 
 function Swatches({ label, colors, value, onPick }: { label: string; colors: string[]; value: string; onPick: (c: string) => void }) {
   return (
@@ -22,7 +22,7 @@ export function Join() {
   const [profile, setProfile] = useState(loadProfile)
   const [code, setCode] = useState(loadInvite)
   // The invite field stays out of the way unless this guildhouse turns out to need one.
-  const [needsCode, setNeedsCode] = useState(false)
+  const [needsCode, setNeedsCode] = useState(() => useNet.getState().inviteNeeded)
   const [refused, setRefused] = useState(false)
   const [busy, setBusy] = useState(false)
   const setLook = (patch: Partial<typeof profile.look>) => setProfile((p) => ({ ...p, look: { ...p.look, ...patch } }))
@@ -40,7 +40,10 @@ export function Join() {
       setNeedsCode(true)
       return
     }
-    if (result === 'online') rememberInvite(code.trim())
+    if (result === 'online') {
+      rememberInvite(code.trim())
+      useNet.setState({ inviteNeeded: false })
+    }
     // If the server cannot be reached you still get in, alone, and it keeps trying in the background.
     enter(entering)
   }
