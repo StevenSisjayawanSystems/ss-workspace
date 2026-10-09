@@ -66,7 +66,7 @@ Any other provider works through `TURN_URLS`, `TURN_USERNAME` and `TURN_CREDENTI
 
 ### Accounts and saved progress
 
-1. Create a Supabase project and apply the migrations: `supabase link`, then `supabase db push`.
+1. Create a Supabase project and apply the migrations with `make db-push-prod`. It reads the database address from `SUPABASE_DB_URL` in `.env.production` (see the top of the `Makefile`), lists what production is missing, and asks before changing anything. Run it again whenever a new migration is added.
 2. On Railway set `SUPABASE_URL` and `SUPABASE_SECRET_KEY`. The deploy log confirms with `Sign-in required`.
 3. On Vercel set `VITE_SUPABASE_URL` and `VITE_SUPABASE_KEY` (the publishable key) and redeploy.
 
