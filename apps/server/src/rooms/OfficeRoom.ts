@@ -6,7 +6,7 @@ import { db, type ChatLine } from '../db'
 import { Note, NoteStore, fromNote, toComment, toNote } from '../notes'
 import { iceServers } from '../ice'
 import { accrue, cleanOffset, cleanProgress, count, guestKey, localDay, newMember, standingOf, type Member } from '../members'
-import { addTask, clearDone, editTask, finishSession, moveTask, removeTask, tickTask, type KeptTask } from '../tasks'
+import { addCategory, addList, addTask, clearDone, editTask, finishSession, moveTask, removeCategory, removeList, removeTask, renameList, shareList, tagTask, tickTask, type KeptTask } from '../tasks'
 import * as garden from '../garden'
 import * as juke from '../jukebox'
 import * as pomo from '../pomodoro'
@@ -341,44 +341,53 @@ export class OfficeRoom extends Room {
       if (me?.alarmAt) this.endAlarm(me)
     })
 
-    // To-do lists. Every change is made by the list's owner; anyone else can only look, and only if it is shared.
-    const mine = (client: Client, change: (me: Member) => unknown) => {
+    // To-do lists. Every change is made by the owner; anyone else can only look, and only at lists shared with them.
+    const mine = (client: Client, change: (me: Member, now: number) => unknown) => {
       const me = this.bySession.get(client.sessionId)
-      if (me && change(me)) this.tasksChanged(me)
+      if (me && change(me, Date.now())) this.tasksChanged(me)
     }
-    this.onMessage('task:add', (client: Client, title: unknown) => mine(client, (me) => addTask(me.tasks, title, Date.now())))
-    this.onMessage('task:edit', (client: Client, m: { id?: unknown; title?: unknown }) => mine(client, (me) => editTask(me.tasks, m?.id, m?.title)))
-    this.onMessage('task:remove', (client: Client, id: unknown) => mine(client, (me) => removeTask(me.tasks, id)))
-    this.onMessage('task:move', (client: Client, m: { id?: unknown; before?: unknown }) => mine(client, (me) => moveTask(me.tasks, m?.id, m?.before)))
-    this.onMessage('task:clear', (client: Client) => mine(client, (me) => clearDone(me.tasks)))
-    this.onMessage('task:share', (client: Client, shared: unknown) =>
+    this.onMessage('list:add', (client: Client, name: unknown) => mine(client, (me, now) => addList(me.todo, name, now)))
+    this.onMessage('list:rename', (client: Client, m: { id?: unknown; name?: unknown }) => mine(client, (me) => renameList(me.todo, m?.id, m?.name)))
+    this.onMessage('list:remove', (client: Client, id: unknown) => mine(client, (me) => removeList(me.todo, id)))
+    // A list is shared with particular people, picked from whoever is here; those already let in stay until taken off.
+    this.onMessage('list:share', (client: Client, m: { id?: unknown; with?: unknown }) =>
       mine(client, (me) => {
-        me.tasksShared = shared === true
-        return (me.dirty = true)
+        const list = me.todo.lists.find((l) => l.id === m?.id)
+        if (!list || !Array.isArray(m?.with)) return false
+        const allowed = m.with.filter((k): k is string => typeof k === 'string' && k !== me.key && (this.members.has(k) || list.sharedWith.includes(k)))
+        const added = shareList(me.todo, list.id, allowed)
+        for (const key of added ?? []) this.tell(key, 'notice', { title: me.name, detail: `shared the list "${list.name}" with you. Open their profile to follow along` })
+        return !!added
       }),
     )
+    this.onMessage('category:add', (client: Client, m: { name?: unknown; color?: unknown }) => mine(client, (me, now) => addCategory(me.todo, m?.name, m?.color, now)))
+    this.onMessage('category:remove', (client: Client, id: unknown) => mine(client, (me) => removeCategory(me.todo, id)))
+    this.onMessage('task:add', (client: Client, m: { list?: unknown; title?: unknown; category?: unknown }) => mine(client, (me, now) => addTask(me.todo, m?.list, m?.title, m?.category, now)))
+    this.onMessage('task:edit', (client: Client, m: { id?: unknown; title?: unknown }) => mine(client, (me) => editTask(me.todo, m?.id, m?.title)))
+    this.onMessage('task:tag', (client: Client, m: { id?: unknown; category?: unknown }) => mine(client, (me) => tagTask(me.todo, m?.id, m?.category)))
+    this.onMessage('task:remove', (client: Client, id: unknown) => mine(client, (me) => removeTask(me.todo, id)))
+    this.onMessage('task:move', (client: Client, m: { id?: unknown; before?: unknown }) => mine(client, (me) => moveTask(me.todo, m?.id, m?.before)))
+    this.onMessage('task:clear', (client: Client, list: unknown) => mine(client, (me) => clearDone(me.todo, list)))
     this.onMessage('task:done', (client: Client, m: { id?: unknown; done?: unknown }) =>
-      mine(client, (me) => {
-        const now = Date.now()
-        const task = tickTask(me.tasks, m?.id, m?.done === true, now)
+      mine(client, (me, now) => {
+        const task = tickTask(me.todo, m?.id, m?.done === true, now)
         if (!task) return false
         if (task.done) this.reward(me, task, now)
         return true
       }),
     )
     // "I'm done with this session": nothing is logged or cleared until its owner says so.
-    this.onMessage('task:finish', (client: Client) =>
-      mine(client, (me) => {
-        const session = finishSession(me.tasks, Date.now())
+    this.onMessage('task:finish', (client: Client, list: unknown) =>
+      mine(client, (me, now) => {
+        const session = finishSession(me.todo, list, now)
         if (!session) return false
-        const kept = { ...session, shared: me.tasksShared }
-        me.log.unshift(kept)
-        if (db && me.account) this.writes = this.writes.then(() => db!.addTaskSession(me.key, kept)).catch(warn)
+        me.log.unshift(session)
+        if (db && me.account) this.writes = this.writes.then(() => db!.addTaskSession(me.key, session)).catch(warn)
         this.tell(me.key, 'notice', { title: 'Session logged', detail: `${session.done} ${session.done === 1 ? 'task' : 'tasks'} done, on your profile` })
         return true
       }),
     )
-    // Opening someone's list (or closing it, with nothing): they are sent it now and whenever it changes.
+    // Opening someone's lists (or closing them, with nothing): they are sent now and whenever they change.
     this.onMessage('tasks:watch', (client: Client, key: unknown) => {
       if (typeof key !== 'string' || !key) return void this.watching.delete(client.sessionId)
       this.watching.set(client.sessionId, key)
@@ -561,27 +570,31 @@ export class OfficeRoom extends Room {
     return me.bonusDay === localDay(Date.now(), me.tzOffset) ? Math.max(0, TASK_BONUS_PER_DAY - me.bonusCount) : TASK_BONUS_PER_DAY
   }
 
-  // Someone's list as `viewer` may see it: all of it if it is theirs or shared, otherwise only that it exists.
+  // Someone's to-do as its owner sees it, without the server's own bookkeeping.
+  private todoOf(owner: Member, lists = owner.todo.lists) {
+    return { lists: lists.map((l) => ({ ...l, tasks: l.tasks.map(({ rewarded: _, ...task }) => task) })), categories: owner.todo.categories }
+  }
+
+  // Someone's to-do as `viewer` may see it: everything if it is theirs, otherwise the lists shared
+  // with them. Session titles follow the same rule.
   private tasksView(key: string, viewer: string) {
     const owner = this.members.get(key)
     if (!owner) return null
     const own = viewer === key
-    const open = own || owner.tasksShared
     return {
       of: key,
-      shared: owner.tasksShared,
-      list: open ? owner.tasks.map(({ rewarded: _, ...task }) => task) : [],
-      sessions: owner.log.map(({ shared, ...s }) => (own || shared ? s : { ...s, titles: [] })),
+      ...this.todoOf(owner, own ? owner.todo.lists : owner.todo.lists.filter((l) => l.sharedWith.includes(viewer))),
+      sessions: owner.log.map(({ sharedWith, ...s }) => (own || sharedWith.includes(viewer) ? s : { ...s, titles: [] })),
     }
   }
 
-  // After any change to a list: write it down, and tell its owner and anyone looking at it.
+  // After any change to a to-do: write it down, and tell its owner and anyone looking at it.
   private tasksChanged(me: Member) {
     if (db && me.account) {
-      const list = me.tasks.map((t) => ({ ...t }))
-      this.writes = this.writes.then(() => db!.putTasks(me.key, list)).catch(warn)
+      const copy = structuredClone(me.todo)
+      this.writes = this.writes.then(() => db!.saveTodo(me.key, copy)).catch(warn)
     }
-    this.tell(me.key, 'tasks', { list: me.tasks.map(({ rewarded: _, ...task }) => task), shared: me.tasksShared, bonusLeft: this.bonusLeft(me) })
+    this.tell(me.key, 'tasks', { ...this.todoOf(me), bonusLeft: this.bonusLeft(me) })
     for (const c of this.clients) {
       if (this.watching.get(c.sessionId) !== me.key) continue
       const view = this.tasksView(me.key, this.bySession.get(c.sessionId)?.key ?? '')
@@ -676,7 +689,7 @@ export class OfficeRoom extends Room {
   }
 
   private saveMembers(members: Member[]) {
-    const rows = members.filter((m) => m.account && m.dirty).map((m) => ({ id: m.key, name: m.name, progress: m.progress, focusSeconds: m.focusSeconds, tasksShared: m.tasksShared, bonusDay: m.bonusDay, bonusCount: m.bonusCount, alarmAt: m.alarmAt, alarmLabel: m.alarmLabel }))
+    const rows = members.filter((m) => m.account && m.dirty).map((m) => ({ id: m.key, name: m.name, progress: m.progress, focusSeconds: m.focusSeconds, bonusDay: m.bonusDay, bonusCount: m.bonusCount, alarmAt: m.alarmAt, alarmLabel: m.alarmLabel }))
     for (const m of members) m.dirty = false
     if (!db) return
     if (rows.length) this.writes = this.writes.then(() => db!.saveMembers(rows, Date.now())).catch(warn)
@@ -754,14 +767,14 @@ export class OfficeRoom extends Room {
     if (account && !this.members.has(key)) {
       await this.writes
       const saved = await db!.member(account)
-      const [tasks, log] = saved ? await Promise.all([db!.tasks(account), db!.taskSessions(account, 30)]) : [[], []]
+      const [todo, log] = saved ? await Promise.all([db!.todo(account), db!.taskSessions(account, 30)]) : [null, []]
       // Another tab of theirs may have finished joining while we were reading.
       if (!this.members.has(key)) {
         const joining = newMember(key, true, name, saved?.progress ?? cleanProgress(options.carry), saved?.seenAt, saved?.since, saved?.about)
         // A bed grown before there were accounts is theirs if it carries their name.
         joining.focusSeconds = saved?.focusSeconds || this.unclaimedBeds.get(name) || 0
         this.unclaimedBeds.delete(name)
-        Object.assign(joining, { tasks, log, tasksShared: saved?.tasksShared ?? false, bonusDay: saved?.bonusDay ?? '', bonusCount: saved?.bonusCount ?? 0, alarmAt: saved?.alarmAt ?? 0, alarmLabel: saved?.alarmLabel ?? '' })
+        Object.assign(joining, { todo: todo ?? joining.todo, log, bonusDay: saved?.bonusDay ?? '', bonusCount: saved?.bonusCount ?? 0, alarmAt: saved?.alarmAt ?? 0, alarmLabel: saved?.alarmLabel ?? '' })
         this.members.set(key, joining)
       }
     }
@@ -819,7 +832,7 @@ export class OfficeRoom extends Room {
       client.send('alarm:ring', { at: member.alarmAt, label: member.alarmLabel, missed: true })
       this.endAlarm(member)
     } else client.send('alarm', { at: member.alarmAt, label: member.alarmLabel })
-    client.send('tasks', { list: member.tasks.map(({ rewarded: _, ...task }) => task), shared: member.tasksShared, bonusLeft: this.bonusLeft(member) })
+    client.send('tasks', { ...this.todoOf(member), bonusLeft: this.bonusLeft(member) })
     // Call setup servers, including relay credentials, go only to people who are in.
     void iceServers().then((servers) => client.send('ice', servers))
     if (!db || !member.account) return

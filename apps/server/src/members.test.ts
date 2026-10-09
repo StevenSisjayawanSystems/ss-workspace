@@ -148,57 +148,76 @@ describe('people in the room', () => {
     await Promise.all([a.room.leave(), b.room.leave(), c.room.leave()])
   })
 
-  it('keeps a to-do list each, private until shared, and grows the plant when a task is finished', async () => {
+  it('keeps to-do lists each, private until shared with someone, and grows the plant when a task is finished', async () => {
     const a = await join('Tess')
     const b = await join('Uma')
+    const c = await join('Vic')
     await wait(150)
     const key = (who: typeof a) => who.got.me[0].member as string
     const mine = () => a.got.tasks.at(-1)
-    const seen = () => b.got['tasks:of'].at(-1)
-    expect(mine()).toMatchObject({ list: [], shared: false, bonusLeft: 8 })
+    const seen = (who: typeof a) => who.got['tasks:of'].at(-1)
+    expect(mine()).toMatchObject({ lists: [{ name: 'My tasks', tasks: [], sharedWith: [] }], categories: [], bonusLeft: 8 })
+    const first = mine().lists[0].id
 
-    a.room.send('task:add', 'Write the brief')
-    a.room.send('task:add', '  Review PR  ')
+    a.room.send('category:add', { name: 'Deep work', color: '#6fb8ad' })
+    await wait(150)
+    const deep = mine().categories[0].id
+    a.room.send('task:add', { list: first, title: 'Write the brief', category: deep })
+    a.room.send('task:add', { list: first, title: '  Review PR  ' })
+    a.room.send('list:add', 'Errands')
     await wait(200)
-    expect(mine().list.map((t: any) => t.title)).toEqual(['Review PR', 'Write the brief'])
-    const [review, brief] = mine().list
+    expect(mine().lists.map((l: any) => l.name)).toEqual(['My tasks', 'Errands'])
+    expect(mine().lists[0].tasks.map((t: any) => [t.title, t.category])).toEqual([['Review PR', ''], ['Write the brief', deep]])
+    const [review, brief] = mine().lists[0].tasks
+    a.room.send('task:add', { list: mine().lists[1].id, title: 'Buy stamps' })
 
-    // Nobody else can read it, or change it, until it is shared.
+    // Nobody else can read a list, or change one, until it is shared with them in particular.
     b.room.send('tasks:watch', key(a))
+    c.room.send('tasks:watch', key(a))
     b.room.send('task:done', { id: brief.id, done: true })
     await wait(200)
-    expect(seen()).toMatchObject({ of: key(a), shared: false, list: [] })
-    expect(mine().list.every((t: any) => !t.done)).toBe(true)
-    a.room.send('task:share', true)
+    expect(seen(b)).toMatchObject({ of: key(a), lists: [] })
+    expect(mine().lists[0].tasks.every((t: any) => !t.done)).toBe(true)
+    a.room.send('list:share', { id: first, with: [key(b), key(a), 'somebody not here'] })
     await wait(200)
-    expect(seen().list.map((t: any) => t.title)).toEqual(['Review PR', 'Write the brief'])
+    expect(mine().lists[0].sharedWith).toEqual([key(b)])
+    expect(seen(b).lists.map((l: any) => l.name)).toEqual(['My tasks'])
+    expect(seen(b).lists[0].tasks.map((t: any) => t.title)).toEqual(['Review PR', 'Write the brief'])
+    expect(seen(c).lists).toEqual([])
+    expect(b.got.notice.at(-1)).toMatchObject({ title: 'Tess' })
 
     // Finishing a task helps the plant, once: unticking and ticking again earns nothing more.
     a.room.send('task:done', { id: brief.id, done: true })
     await wait(200)
     expect(mine()).toMatchObject({ bonusLeft: 7 })
     expect(a.got.notice.at(-1)).toMatchObject({ title: 'Task done' })
-    expect(seen().list.find((t: any) => t.id === brief.id).done).toBe(true)
+    expect(seen(b).lists[0].tasks.find((t: any) => t.id === brief.id).done).toBe(true)
     const bed = () => a.room.state.garden.find((p: any) => p.name === 'Tess')
     expect(bed().seconds).toBe(900)
     a.room.send('task:done', { id: brief.id, done: false })
     a.room.send('task:done', { id: brief.id, done: true })
     a.room.send('task:edit', { id: review.id, title: 'Review the PR' })
+    a.room.send('task:tag', { id: review.id, category: deep })
     a.room.send('task:move', { id: brief.id, before: review.id })
     await wait(200)
     expect(bed().seconds).toBe(900)
-    expect(mine().list.map((t: any) => t.title)).toEqual(['Write the brief', 'Review the PR'])
+    expect(mine().lists[0].tasks.map((t: any) => [t.title, t.category])).toEqual([['Write the brief', deep], ['Review the PR', deep]])
 
-    // Closing the session is deliberate: the finished task is logged and cleared, the other stays.
-    b.room.send('task:finish')
-    a.room.send('task:finish')
+    // Closing the session is deliberate, and per list: the finished task is logged and cleared, the other stays.
+    b.room.send('task:finish', first)
+    a.room.send('task:finish', first)
     await wait(200)
-    expect(mine().list.map((t: any) => t.title)).toEqual(['Review the PR'])
-    expect(seen().sessions).toMatchObject([{ done: 1, total: 2, titles: ['Write the brief'] }])
+    expect(mine().lists[0].tasks.map((t: any) => t.title)).toEqual(['Review the PR'])
+    expect(mine().lists[1].tasks).toHaveLength(1)
+    expect(seen(b).sessions).toMatchObject([{ list: 'My tasks', done: 1, total: 2, titles: ['Write the brief'] }])
+    expect(seen(c).sessions).toMatchObject([{ list: 'My tasks', done: 1, total: 2, titles: [] }])
     expect(a.got.notice.at(-1)).toMatchObject({ title: 'Session logged' })
+    a.room.send('category:remove', deep)
+    a.room.send('list:remove', mine().lists[1].id)
     a.room.send('task:remove', review.id)
     await wait(200)
-    expect(mine().list).toEqual([])
+    expect(mine()).toMatchObject({ lists: [{ name: 'My tasks', tasks: [] }], categories: [] })
+    await c.room.leave()
 
     // An alarm rings for its owner alone, once, and can be called off.
     a.room.send('alarm:set', { at: Date.now() + 900, label: '  Stand up  ' })

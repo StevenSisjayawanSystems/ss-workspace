@@ -2,7 +2,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { isBoard, pairKey, type Bond, type Person, type Progress, type TaskSession } from '@guildhouse/shared'
 import { config } from './config'
 import type { SavedComment, SavedNote } from './notes'
-import type { KeptTask } from './tasks'
+import type { Todo } from './tasks'
 
 // What a member chooses about themselves. Anything left out of a save is left as it was.
 export interface Card {
@@ -21,7 +21,6 @@ export interface SavedMember {
   since: number
   about: string
   focusSeconds: number
-  tasksShared: boolean
   bonusDay: string
   bonusCount: number
   alarmAt: number
@@ -34,7 +33,6 @@ export interface MemberRow {
   name: string
   progress: Progress
   focusSeconds: number
-  tasksShared: boolean
   bonusDay: string
   bonusCount: number
   alarmAt: number
@@ -88,7 +86,6 @@ export class Db {
       since: Date.parse(data.created_at) || Date.now(),
       about: data.about ?? '',
       focusSeconds: data.focus_seconds ?? 0,
-      tasksShared: !!data.tasks_shared,
       bonusDay: data.task_bonus_day ?? '',
       bonusCount: data.task_bonus_count ?? 0,
       alarmAt: data.alarm_at ? Date.parse(data.alarm_at) : 0,
@@ -99,7 +96,7 @@ export class Db {
   async saveMembers(members: MemberRow[], now: number) {
     if (!members.length) return
     const p = (m: { progress: Progress }) => m.progress
-    const rows = members.map((m) => ({ id: m.id, name: m.name, seconds: Math.round(p(m).seconds), call_seconds: Math.round(p(m).callSeconds), metres: Math.round(p(m).metres), messages: p(m).messages, songs: p(m).songs, pomodoros: p(m).pomodoros, days: p(m).days, streak: p(m).streak, last_day: p(m).lastDay, focus_seconds: Math.round(m.focusSeconds), tasks_shared: m.tasksShared, task_bonus_day: m.bonusDay, task_bonus_count: m.bonusCount, alarm_at: m.alarmAt ? new Date(m.alarmAt).toISOString() : null, alarm_label: m.alarmLabel, seen_at: new Date(now).toISOString() }))
+    const rows = members.map((m) => ({ id: m.id, name: m.name, seconds: Math.round(p(m).seconds), call_seconds: Math.round(p(m).callSeconds), metres: Math.round(p(m).metres), messages: p(m).messages, songs: p(m).songs, pomodoros: p(m).pomodoros, days: p(m).days, streak: p(m).streak, last_day: p(m).lastDay, focus_seconds: Math.round(m.focusSeconds), task_bonus_day: m.bonusDay, task_bonus_count: m.bonusCount, alarm_at: m.alarmAt ? new Date(m.alarmAt).toISOString() : null, alarm_label: m.alarmLabel, seen_at: new Date(now).toISOString() }))
     fail('Saving progress', (await this.sb.from('members').upsert(rows)).error)
   }
 
@@ -114,30 +111,52 @@ export class Db {
     return (data ?? []).map((m) => ({ id: m.id, name: m.name }))
   }
 
-  async tasks(id: string): Promise<KeptTask[]> {
-    const { data, error } = await this.sb.from('tasks').select('*').eq('member_id', id).order('position')
-    fail('Reading tasks', error)
-    return (data ?? []).map((t) => ({ id: t.id, title: t.title, done: t.done, doneAt: t.done_at ? Date.parse(t.done_at) : 0, at: Date.parse(t.created_at), rewarded: t.rewarded }))
+  // A member's lists, tasks and categories, or null if they have none saved yet.
+  async todo(id: string): Promise<Todo | null> {
+    const [lists, tasks, categories] = await Promise.all([
+      this.sb.from('task_lists').select('*').eq('member_id', id).order('position'),
+      this.sb.from('tasks').select('*').eq('member_id', id).order('position'),
+      this.sb.from('task_categories').select('*').eq('member_id', id).order('position'),
+    ])
+    fail('Reading tasks', lists.error ?? tasks.error ?? categories.error)
+    if (!lists.data?.length) return null
+    return {
+      lists: lists.data.map((l) => ({
+        id: l.id,
+        name: l.name,
+        sharedWith: l.shared_with ?? [],
+        tasks: (tasks.data ?? []).filter((t) => t.list_id === l.id).map((t) => ({ id: t.id, title: t.title, done: t.done, doneAt: t.done_at ? Date.parse(t.done_at) : 0, at: Date.parse(t.created_at), category: t.category ?? '', rewarded: t.rewarded })),
+      })),
+      categories: (categories.data ?? []).map((c) => ({ id: c.id, name: c.name, color: c.color })),
+    }
   }
 
-  // Makes the saved list match this one: rows that are gone from it are deleted, the rest written in order.
-  async putTasks(id: string, list: KeptTask[]) {
-    const gone = this.sb.from('tasks').delete().eq('member_id', id)
-    fail('Removing tasks', (await (list.length ? gone.not('id', 'in', `(${list.map((t) => `"${t.id}"`).join(',')})`) : gone)).error)
-    if (!list.length) return
-    const rows = list.map((t, position) => ({ id: t.id, member_id: id, title: t.title, done: t.done, done_at: t.doneAt ? new Date(t.doneAt).toISOString() : null, rewarded: t.rewarded, position, created_at: new Date(t.at).toISOString() }))
-    fail('Saving tasks', (await this.sb.from('tasks').upsert(rows)).error)
+  // Makes what is saved match this: rows that are gone are deleted, the rest written in order.
+  async saveTodo(id: string, todo: Todo) {
+    const except = (ids: string[]) => `(${ids.map((x) => `"${x}"`).join(',')})`
+    const prune = async (table: string, ids: string[]) => {
+      const gone = this.sb.from(table).delete().eq('member_id', id)
+      fail(`Pruning ${table}`, (await (ids.length ? gone.not('id', 'in', except(ids)) : gone)).error)
+    }
+    const tasks = todo.lists.flatMap((l) => l.tasks.map((t, position) => ({ id: t.id, member_id: id, list_id: l.id, title: t.title, done: t.done, done_at: t.doneAt ? new Date(t.doneAt).toISOString() : null, rewarded: t.rewarded, category: t.category, position, created_at: new Date(t.at).toISOString() })))
+    // Lists go first both ways: removing one takes its tasks with it, and a task needs its list to exist.
+    await prune('task_lists', todo.lists.map((l) => l.id))
+    fail('Saving lists', (await this.sb.from('task_lists').upsert(todo.lists.map((l, position) => ({ id: l.id, member_id: id, name: l.name, position, shared_with: l.sharedWith })))).error)
+    await prune('tasks', tasks.map((t) => t.id))
+    if (tasks.length) fail('Saving tasks', (await this.sb.from('tasks').upsert(tasks)).error)
+    await prune('task_categories', todo.categories.map((c) => c.id))
+    if (todo.categories.length) fail('Saving categories', (await this.sb.from('task_categories').upsert(todo.categories.map((c, position) => ({ id: c.id, member_id: id, name: c.name, color: c.color, position })))).error)
   }
 
-  // Visits in which a member finished tasks, latest first.
-  async taskSessions(id: string, limit: number): Promise<(TaskSession & { shared: boolean })[]> {
+  // Sessions a member has closed, latest first.
+  async taskSessions(id: string, limit: number): Promise<(TaskSession & { sharedWith: string[] })[]> {
     const { data, error } = await this.sb.from('task_sessions').select('*').eq('member_id', id).order('ended_at', { ascending: false }).limit(limit)
     fail('Reading task sessions', error)
-    return (data ?? []).map((s) => ({ startedAt: Date.parse(s.started_at), endedAt: Date.parse(s.ended_at), done: s.done, total: s.total, titles: s.titles ?? [], shared: s.shared }))
+    return (data ?? []).map((s) => ({ list: s.list_name ?? '', startedAt: Date.parse(s.started_at), endedAt: Date.parse(s.ended_at), done: s.done, total: s.total, titles: s.titles ?? [], sharedWith: s.shared_with ?? [] }))
   }
 
-  async addTaskSession(id: string, s: TaskSession & { shared: boolean }) {
-    const row = { member_id: id, started_at: new Date(s.startedAt).toISOString(), ended_at: new Date(s.endedAt).toISOString(), done: s.done, total: s.total, titles: s.titles, shared: s.shared }
+  async addTaskSession(id: string, s: TaskSession & { sharedWith: string[] }) {
+    const row = { member_id: id, list_name: s.list, started_at: new Date(s.startedAt).toISOString(), ended_at: new Date(s.endedAt).toISOString(), done: s.done, total: s.total, titles: s.titles, shared_with: s.sharedWith }
     fail('Saving a task session', (await this.sb.from('task_sessions').insert(row)).error)
   }
 

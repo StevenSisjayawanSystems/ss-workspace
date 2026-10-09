@@ -3546,7 +3546,71 @@ body:has(.meditation:not([hidden])) .call.quiet {
   box-shadow: 0 0 0 2px var(--gold), 0 0 0 3px var(--teal-ink);
 }
 
-/* To-do list: your own tasks, in a panel over the world */
+/* Jukebox: music the house keeps to hand, one press to queue */
+.juke-picks {
+  margin-top: 10px;
+}
+
+.juke-picks > span {
+  display: block;
+  margin-bottom: 6px;
+  font: 600 10px var(--display);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.juke-picks button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 9px;
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+  text-align: left;
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.juke-picks button + button {
+  margin-top: 6px;
+}
+
+.juke-picks button:hover:not(:disabled) {
+  border-color: var(--gold);
+}
+
+.juke-picks button:disabled {
+  color: #7f8aa0;
+  cursor: default;
+}
+
+.juke-picks b {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.juke-picks svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--gold);
+}
+
+.juke-picks i {
+  font-size: 11px;
+  font-style: normal;
+}
+
+/* Tasks: a panel with your lists down the side and one list open beside them */
 .tasks-scrim {
   position: fixed;
   inset: 0;
@@ -3555,42 +3619,316 @@ body:has(.meditation:not([hidden])) .call.quiet {
   padding: 16px;
   background: rgba(8, 13, 22, 0.6);
   z-index: 35;
+  animation: fade-in 0.16s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
 }
 
 .tasks {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  width: min(480px, 100%);
-  max-height: min(720px, 100%);
-  padding: 18px 20px 16px;
+  display: grid;
+  grid-template-columns: 216px minmax(0, 1fr);
+  width: min(880px, 100%);
+  height: min(660px, 100%);
+  overflow: hidden;
   background: var(--panel);
   border-radius: 3px;
   box-shadow: var(--edge);
+  animation: pop-in 0.2s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
 
-.tasks-head {
+/* The rail: lists, then categories */
+.tasks-rail {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
-  font: 700 13px var(--display);
-  letter-spacing: 0.18em;
+  flex-direction: column;
+  min-height: 0;
+  padding: 18px 12px 14px;
+  overflow-y: auto;
+  background: #0b1220;
+  border-right: 1px solid rgba(216, 178, 94, 0.2);
+}
+
+.tasks-rail h4 {
+  margin: 0 6px 8px;
+  font: 700 10.5px var(--display);
+  letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--gold);
 }
 
+.tasks-rail h4:not(:first-child) {
+  margin-top: 22px;
+}
+
+.tasks-rail ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tasks-rail li > button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  font: 700 13px var(--ui);
+  color: #b9c2d2;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.tasks-rail li > button:hover {
+  color: var(--cream);
+  background: rgba(243, 234, 214, 0.06);
+}
+
+.tasks-rail li > button.on {
+  color: var(--cream);
+  background: rgba(216, 178, 94, 0.14);
+  border-left-color: var(--gold);
+}
+
+.tasks-rail li > button span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tasks-rail li > button svg {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  color: var(--gold);
+}
+
+.tasks-rail li > button em {
+  flex: none;
+  min-width: 18px;
+  padding: 0 5px;
+  font: 800 11px var(--ui);
+  font-style: normal;
+  text-align: center;
+  color: var(--teal-ink);
+  background: var(--gold);
+  border-radius: 999px;
+}
+
+.tasks-new {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 6px 8px;
+  font: 700 12px var(--ui);
+  color: #7f8aa0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.tasks-new:hover {
+  color: var(--gold);
+}
+
+.tasks-new svg {
+  width: 13px;
+  height: 13px;
+}
+
+.tasks-rail form {
+  margin-top: 6px;
+  padding: 0 4px;
+}
+
+.tasks-rail input {
+  width: 100%;
+  padding: 6px 9px;
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+  border-radius: 2px;
+  outline: none;
+}
+
+.tasks-rail input:focus {
+  border-color: var(--cream);
+}
+
+.tasks-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tasks-colors button {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  transform: rotate(45deg) scale(0.82);
+  transition: transform 0.12s;
+}
+
+.tasks-colors button.on {
+  outline: 2px solid var(--cream);
+  outline-offset: 2px;
+  transform: rotate(45deg);
+}
+
+.tasks-cats li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 4px 5px 10px;
+  font-size: 13px;
+  color: #b9c2d2;
+}
+
+.tasks-cats li span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tasks-cats li button {
+  flex: none;
+  display: grid;
+  width: auto;
+  padding: 3px;
+  border-left: 0;
+  color: #56617a;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.tasks-cats li:hover button,
+.tasks-cats li button:focus-visible {
+  opacity: 1;
+}
+
+.tasks-cats li button:hover {
+  color: var(--cream);
+}
+
+.tasks-cats svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* A category's mark: a small diamond in its colour. */
+.gem {
+  flex: none;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: #56617a;
+  transform: rotate(45deg);
+}
+
+/* The open list */
+.tasks-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 18px 20px 16px;
+  animation: fade-in 0.18s ease-out;
+}
+
+.tasks-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.tasks-head h3 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font: 700 18px var(--display);
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+
+.tasks-head > .task-edit {
+  font: 700 16px var(--display);
+}
+
 .tasks-head em {
-  margin-left: auto;
+  flex: none;
   font: 600 12px var(--ui);
   font-style: normal;
-  letter-spacing: 0;
-  text-transform: none;
   color: #9aa6ba;
 }
 
 .tasks-head .icon-btn {
-  align-self: center;
   float: none;
+}
+
+.tasks-chip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font: 700 12px var(--ui);
+  color: var(--cream);
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.tasks-chip:hover {
+  border-color: var(--gold);
+}
+
+.tasks-chip.on {
+  color: var(--teal-ink);
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
+.tasks-chip svg {
+  width: 13px;
+  height: 13px;
+}
+
+.tasks .journey-bar div,
+.quests .journey-bar div {
+  transition: width 0.35s cubic-bezier(0.3, 0.8, 0.3, 1);
 }
 
 .tasks-add {
@@ -3601,6 +3939,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
 }
 
 .tasks-add input,
+.tasks-add select,
 .task-edit {
   flex: 1;
   min-width: 0;
@@ -3613,7 +3952,16 @@ body:has(.meditation:not([hidden])) .call.quiet {
   outline: none;
 }
 
+.tasks-add select {
+  flex: none;
+  max-width: 150px;
+  padding: 8px 8px;
+  font-size: 13px;
+  color-scheme: dark;
+}
+
 .tasks-add input:focus,
+.tasks-add select:focus,
 .task-edit:focus {
   border-color: var(--cream);
 }
@@ -3629,11 +3977,37 @@ body:has(.meditation:not([hidden])) .call.quiet {
   cursor: default;
 }
 
+/* In order, or by category */
+.tasks-bar {
+  align-self: flex-start;
+  display: flex;
+  margin-top: 12px;
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.tasks-bar button {
+  padding: 4px 13px;
+  font: 700 11px var(--ui);
+  color: #9aa6ba;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  transition: background 0.14s, color 0.14s;
+}
+
+.tasks-bar button.on {
+  color: var(--teal-ink);
+  background: var(--gold);
+}
+
 .tasks-body {
   flex: 1;
-  min-height: 120px;
-  margin: 10px -6px 0;
-  padding: 0 6px;
+  min-height: 0;
+  margin: 8px -8px 0;
+  padding: 0 8px;
   overflow-y: auto;
 }
 
@@ -3644,19 +4018,64 @@ body:has(.meditation:not([hidden])) .call.quiet {
   list-style: none;
 }
 
-.tasks-body > ul:first-of-type {
-  min-height: 8px;
-  padding-bottom: 6px;
+.tasks-open {
+  min-height: 10px;
+  padding-bottom: 8px;
 }
 
 .tasks-empty {
   margin: 0;
-  padding: 22px 0;
+  padding: 26px 0;
   text-align: center;
   color: #7f8aa0;
 }
 
+.tasks-group {
+  margin-top: 6px;
+  border-radius: 2px;
+  transition: background 0.12s;
+}
+
+/* A task held over a category will be moved into it. */
+.tasks-group.over {
+  background: rgba(216, 178, 94, 0.1);
+}
+
+.tasks-group-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 4px;
+  font: 700 11px var(--display);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cream);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.tasks-group-head span {
+  flex: 1;
+  text-align: left;
+}
+
+.tasks-group-head em {
+  font: 800 11px var(--ui);
+  font-style: normal;
+  letter-spacing: 0;
+  color: #9aa6ba;
+}
+
+.tasks-group-head > i {
+  font-style: normal;
+  color: #7f8aa0;
+}
+
+/* One task. It slides in when added; ticking it draws the tick, strikes the words, and after a beat it folds away. */
 .task {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -3664,6 +4083,25 @@ body:has(.meditation:not([hidden])) .call.quiet {
   padding: 4px 4px 4px 0;
   border-top: 2px solid transparent;
   border-bottom: 1px solid rgba(216, 178, 94, 0.12);
+  animation: task-in 0.2s ease-out;
+}
+
+@keyframes task-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.task.lingering {
+  animation: task-out 0.26s ease-in 0.42s forwards;
+}
+
+@keyframes task-out {
+  to {
+    opacity: 0;
+    transform: translateX(10px);
+  }
 }
 
 /* Where a dragged task would land. */
@@ -3681,6 +4119,12 @@ body:has(.meditation:not([hidden])) .call.quiet {
   width: 14px;
   color: #56617a;
   cursor: grab;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.task:hover .task-grip {
+  opacity: 1;
 }
 
 .task-grip svg {
@@ -3699,6 +4143,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
   background: none;
   border: 2px solid var(--gold-deep);
   border-radius: 3px;
+  transition: background 0.14s, border-color 0.14s, transform 0.14s;
 }
 
 button.task-box {
@@ -3707,6 +4152,10 @@ button.task-box {
 
 button.task-box:hover {
   border-color: var(--gold);
+}
+
+button.task-box:active {
+  transform: scale(0.86);
 }
 
 .task.done .task-box {
@@ -3720,19 +4169,75 @@ button.task-box:hover {
   stroke-width: 3;
 }
 
+/* The tick is drawn, not just shown. */
+.task-box svg path {
+  stroke-dasharray: 22;
+  animation: tick 0.24s ease-out;
+}
+
+@keyframes tick {
+  from {
+    stroke-dashoffset: 22;
+  }
+}
+
 .task-title {
   flex: 1;
   min-width: 0;
   padding: 4px 0;
   line-height: 1.35;
   overflow-wrap: anywhere;
+  text-decoration: line-through;
+  text-decoration-color: transparent;
   cursor: text;
+  transition: color 0.25s, text-decoration-color 0.25s;
 }
 
 .task.done .task-title {
   color: #7f8aa0;
-  text-decoration: line-through;
+  text-decoration-color: #7f8aa0;
   cursor: default;
+}
+
+.task-tagger {
+  position: relative;
+  flex: none;
+}
+
+.task-tag {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 130px;
+  padding: 2px 9px 2px 8px;
+  overflow: hidden;
+  font: 700 11px var(--ui);
+  color: #b9c2d2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: var(--well);
+  border: 1px solid #2a3244;
+  border-radius: 999px;
+}
+
+button.task-tag {
+  cursor: pointer;
+}
+
+button.task-tag:hover {
+  border-color: var(--gold-deep);
+}
+
+/* Untagged tasks only offer a tag when you reach for them. */
+.task-tag.none {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.task:hover .task-tag.none,
+.task-tag.none:focus-visible {
+  opacity: 1;
 }
 
 .task-tool {
@@ -3749,6 +4254,16 @@ button.task-box:hover {
   cursor: pointer;
 }
 
+.task .task-tool {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.task:hover .task-tool,
+.task .task-tool:focus-visible {
+  opacity: 1;
+}
+
 .task-tool:hover {
   color: var(--cream);
   background: var(--well);
@@ -3757,6 +4272,94 @@ button.task-box:hover {
 .task-tool svg {
   width: 15px;
   height: 15px;
+}
+
+@media (hover: none) {
+  .task-grip,
+  .task .task-tool,
+  .task-tag.none,
+  .tasks-cats li button {
+    opacity: 1;
+  }
+}
+
+/* Small panels that drop from a button: who to share with, and which category. */
+.tasks-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 4;
+  min-width: 190px;
+  padding: 8px;
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+  border-radius: 3px;
+  animation: pop-in 0.14s ease-out;
+}
+
+.tasks-pop.share {
+  right: 34px;
+  width: 260px;
+  padding: 12px;
+}
+
+.tasks-pop p {
+  margin: 8px 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #9aa6ba;
+}
+
+.tasks-pop.share label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 2px;
+  cursor: pointer;
+}
+
+.tasks-pop.share input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--gold);
+}
+
+.tasks-pop.share small {
+  margin-left: auto;
+  font-size: 11px;
+  color: #7f8aa0;
+}
+
+.tasks-pop.share > button {
+  width: 100%;
+  padding: 7px;
+  font: 700 12px var(--ui);
+  color: var(--teal-ink);
+  background: var(--gold);
+  border: 0;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.tasks-pop.tags button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 6px 8px;
+  font: 700 12px var(--ui);
+  color: var(--cream);
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.tasks-pop.tags button:hover,
+.tasks-pop.tags button.on {
+  background: rgba(216, 178, 94, 0.16);
 }
 
 .tasks-done-head {
@@ -3785,21 +4388,43 @@ button.task-box:hover {
   text-decoration: underline;
 }
 
+.profile-list + .profile-list {
+  margin-top: 18px;
+}
+
+.tasks-foot {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(216, 178, 94, 0.18);
+}
+
+.tasks-foot p {
+  flex: 1;
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #9aa6ba;
+}
+
 .tasks-finish {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  margin-top: 12px;
-  padding: 10px;
-  font: 700 12px var(--display);
-  letter-spacing: 0.16em;
+  padding: 10px 16px;
+  font: 700 11px var(--display);
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: #0e1726;
   background: var(--gold);
   border: 0;
   border-radius: 2px;
   cursor: pointer;
+  transition: background 0.14s;
 }
 
 .tasks-finish:hover:not(:disabled) {
@@ -3824,46 +4449,29 @@ button.task-box:hover {
   border-color: var(--gold);
 }
 
-.tasks-share {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(216, 178, 94, 0.18);
-  cursor: pointer;
+@media (max-width: 680px) {
+  .tasks {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .tasks-rail {
+    max-height: 132px;
+    padding: 12px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(216, 178, 94, 0.2);
+  }
+
+  .tasks-foot {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
-.tasks-share input {
-  flex: none;
-  width: 18px;
-  height: 18px;
-  margin: 1px 0 0;
-  accent-color: var(--gold);
-}
-
-.tasks-share span {
-  font-size: 12px;
-  line-height: 1.4;
-  color: #9aa6ba;
-}
-
-.tasks-share b {
-  display: block;
-  font-size: 13px;
-  color: var(--cream);
-}
-
-.tasks-note {
-  margin: 10px 0 0;
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: #9aa6ba;
-}
-
-/* Someone's list as others see it, and the log of visits on a profile. */
+/* Someone's list as others see it, and the log of sessions on a profile. */
 .tasks-view .task {
   min-height: 32px;
+  animation: none;
 }
 
 .task-sessions {
@@ -3902,6 +4510,243 @@ button.task-box:hover {
   line-height: 1.4;
   color: #b9c2d2;
   overflow-wrap: anywhere;
+}
+
+/* Quest tracker: one list pinned to the right edge, under the jukebox and above the map. When the
+   jukebox opens it steps aside to the left of it rather than sitting underneath. */
+.quests {
+  position: fixed;
+  top: calc(max(16px, env(safe-area-inset-top)) + 88px);
+  right: max(16px, env(safe-area-inset-right));
+  display: flex;
+  flex-direction: column;
+  width: 252px;
+  max-height: calc(100dvh - 104px - 262px);
+  background: rgba(14, 23, 38, 0.9);
+  border-radius: 3px;
+  box-shadow: var(--edge);
+  z-index: 1;
+  transition: right 0.28s cubic-bezier(0.3, 0.8, 0.3, 1);
+  animation: quests-in 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+@keyframes quests-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+body:has(.jukebox.open) .quests {
+  right: calc(max(16px, env(safe-area-inset-right)) + 312px);
+}
+
+.quests.folded {
+  width: auto;
+}
+
+.quests header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px 7px 12px;
+}
+
+.quests-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  font: 700 11px var(--display);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--gold);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.quests-title:hover {
+  color: var(--cream);
+}
+
+.quests-title i {
+  width: 7px;
+  height: 7px;
+  background: var(--gold);
+  transform: rotate(45deg);
+}
+
+.quests header em {
+  margin-left: auto;
+  font: 800 11px var(--ui);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  color: #9aa6ba;
+}
+
+.quests-fold {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 12px;
+  color: #9aa6ba;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.quests-fold:hover {
+  color: var(--cream);
+}
+
+.quests-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0 12px 10px;
+  border-top: 1px solid rgba(216, 178, 94, 0.2);
+  animation: fade-in 0.2s ease-out;
+}
+
+.quests-list {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 0 6px;
+}
+
+.quests-list button {
+  flex: none;
+  padding: 0 5px;
+  font: 800 15px var(--ui);
+  line-height: 1;
+  color: #9aa6ba;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.quests-list button:hover {
+  color: var(--gold);
+}
+
+.quests-list .quests-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--cream);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quests ul {
+  flex: 1;
+  min-height: 0;
+  margin: 6px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.quests .task {
+  min-height: 30px;
+  padding: 2px 0;
+  font-size: 13px;
+  border: 0;
+}
+
+.quests .task-box {
+  width: 17px;
+  height: 17px;
+}
+
+.quests .task-box svg {
+  width: 12px;
+  height: 12px;
+}
+
+.quests .task-title {
+  padding: 2px 0;
+  cursor: default;
+}
+
+.quests p,
+.quests-more {
+  margin: 6px 0 0;
+  padding: 0;
+  font: 600 12px var(--ui);
+  color: #7f8aa0;
+  text-align: left;
+  background: none;
+  border: 0;
+}
+
+.quests-more {
+  cursor: pointer;
+}
+
+.quests-more:hover {
+  color: var(--gold);
+}
+
+.quests form {
+  margin-top: 8px;
+}
+
+.quests input {
+  width: 100%;
+  padding: 5px 9px;
+  font: inherit;
+  font-size: 12.5px;
+  color: inherit;
+  background: none;
+  border: 1px dashed #3a465c;
+  border-radius: 2px;
+  outline: none;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.quests input::placeholder {
+  color: #7f8aa0;
+}
+
+.quests input:focus {
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+}
+
+/* Not enough room beside an open jukebox, or on a phone: the Tasks pill opens the full panel instead. */
+@media (max-width: 1180px) {
+  body:has(.jukebox.open) .quests {
+    display: none;
+  }
+}
+
+@media (max-width: 760px), (pointer: coarse), (max-height: 560px) {
+  .quests {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tasks,
+  .tasks-scrim,
+  .tasks-main,
+  .tasks-pop,
+  .task,
+  .task-box svg path,
+  .quests,
+  .quests-body {
+    animation: none;
+  }
+
+  .task.lingering {
+    animation: none;
+    opacity: 0.5;
+  }
 }
 
 /* A question before something is thrown away. */

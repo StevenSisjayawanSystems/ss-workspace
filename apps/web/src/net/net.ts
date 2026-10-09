@@ -1,6 +1,6 @@
 import { Client, type Room } from '@colyseus/sdk'
 import { create } from 'zustand'
-import { QUIET_ZONES, SEATS, isBoard, roomById, seatById, standSpot, type BoardId, type BondWith, type Person, type Progress, type Seat, type Task, type TaskSession, type ZoneId } from '@guildhouse/shared'
+import { QUIET_ZONES, SEATS, isBoard, roomById, seatById, standSpot, type BoardId, type BondWith, type Person, type Progress, type Seat, type TaskCategory, type TaskList, type TaskSession, type ZoneId } from '@guildhouse/shared'
 import { accessToken } from '../account'
 import { inReach, player, saveStatus, useGame, walkToSeat, type Profile } from '../game'
 import { DEFAULT_LOOK, type AvatarLook } from '../look'
@@ -196,10 +196,10 @@ interface NetState {
   // Our own alarm (server time it rings, 0 for none), and the one going off right now.
   alarm: { at: number; label: string }
   alarmRinging: { at: number; label: string } | null
-  // Our own to-do list: whether others may see it, and how many more tasks can help our plant today.
-  tasks: { list: Task[]; shared: boolean; bonusLeft: number }
-  // Lists we have opened to look at, by whose they are, with the visits in which they finished tasks.
-  tasksOf: Record<string, { shared: boolean; list: Task[]; sessions: TaskSession[] }>
+  // Our own to-do: lists, the categories we tag tasks with, and how many more tasks can help our plant today.
+  tasks: { lists: TaskList[]; categories: TaskCategory[]; bonusLeft: number }
+  // Other people's to-dos we have opened: the lists they share with us, and the sessions they have closed.
+  tasksOf: Record<string, { lists: TaskList[]; categories: TaskCategory[]; sessions: TaskSession[] }>
   selfJoinedAt: number
   juke: JukeState
   jukeError: string | null
@@ -212,7 +212,7 @@ interface NetState {
 
 const NO_MUSIC: JukeState = { queue: [], startedAt: 0, paused: false, pausedAt: 0 }
 
-export const useNet = create<NetState>(() => ({ me: '', account: false, seenAt: 0, since: 0, about: '', people: [], bonds: {}, streaks: {}, alarm: { at: 0, label: '' }, alarmRinging: null, tasks: { list: [], shared: false, bonusLeft: 0 }, tasksOf: {}, talk: '', talks: [], unread: {}, loginNeeded: false, inviteNeeded: false, garden: [], desks: {}, bookings: [], closed: {}, knock: null, notes: [], statuses: {}, pomo: NO_TIMER, ringing: null, inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
+export const useNet = create<NetState>(() => ({ me: '', account: false, seenAt: 0, since: 0, about: '', people: [], bonds: {}, streaks: {}, alarm: { at: 0, label: '' }, alarmRinging: null, tasks: { lists: [], categories: [], bonusLeft: 0 }, tasksOf: {}, talk: '', talks: [], unread: {}, loginNeeded: false, inviteNeeded: false, garden: [], desks: {}, bookings: [], closed: {}, knock: null, notes: [], statuses: {}, pomo: NO_TIMER, ringing: null, inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
 
 const SEND_MS = 80
 const MAX_CHAT = 400
@@ -597,7 +597,7 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
       alarmTimeout = setTimeout(() => stopAlarm(), ALARM_SECONDS * 1000)
     })
     joined.onMessage('tasks', (tasks: NetState['tasks']) => useNet.setState({ tasks }))
-    joined.onMessage('tasks:of', (m: { of: string; shared: boolean; list: Task[]; sessions: TaskSession[] }) => useNet.setState((s) => ({ tasksOf: { ...s.tasksOf, [m.of]: m } })))
+    joined.onMessage('tasks:of', (m: { of: string } & NetState['tasksOf'][string]) => useNet.setState((s) => ({ tasksOf: { ...s.tasksOf, [m.of]: m } })))
     let greeted = false
     joined.onMessage('bonds', (m: { of: string; list: BondWith[] }) => {
       useNet.setState((s) => ({ bonds: { ...s.bonds, [m.of]: m.list } }))
@@ -785,19 +785,26 @@ export function stopAlarm(snoozeMinutes = 0) {
   if (ringing && snoozeMinutes) alarm.set(Date.now() + snoozeMinutes * 60000, ringing.label)
 }
 
-// Our own to-do list. The server holds it; each of these comes back as a fresh `tasks`.
+// Our own to-do. The server holds it; each of these comes back as a fresh `tasks`.
 export const todo = {
-  add: (title: string) => room?.send('task:add', title),
+  addList: (name: string) => room?.send('list:add', name),
+  renameList: (id: string, name: string) => room?.send('list:rename', { id, name }),
+  removeList: (id: string) => room?.send('list:remove', id),
+  // Lets exactly these people see a list. They must be here now, or already have been let in.
+  shareList: (id: string, members: string[]) => room?.send('list:share', { id, with: members }),
+  addCategory: (name: string, color: string) => room?.send('category:add', { name, color }),
+  removeCategory: (id: string) => room?.send('category:remove', id),
+  add: (list: string, title: string, category = '') => room?.send('task:add', { list, title, category }),
   edit: (id: string, title: string) => room?.send('task:edit', { id, title }),
+  tag: (id: string, category: string) => room?.send('task:tag', { id, category }),
   done: (id: string, done: boolean) => room?.send('task:done', { id, done }),
   remove: (id: string) => room?.send('task:remove', id),
-  // Puts a task just before another, or last when `before` is left out.
+  // Puts a task just before another in its list, or last when `before` is left out.
   move: (id: string, before?: string) => room?.send('task:move', { id, before }),
-  clear: () => room?.send('task:clear'),
-  // Closes the session: finished tasks are logged on the profile and cleared, the rest stay.
-  finish: () => room?.send('task:finish'),
-  share: (shared: boolean) => room?.send('task:share', shared),
-  // Opens someone's list so it arrives in `tasksOf` and stays up to date; '' stops.
+  clear: (list: string) => room?.send('task:clear', list),
+  // Closes the session on a list: finished tasks are logged on the profile and cleared, the rest stay.
+  finish: (list: string) => room?.send('task:finish', list),
+  // Opens someone's to-do so it arrives in `tasksOf` and stays up to date; '' stops.
   watch: (key: string) => room?.send('tasks:watch', key),
 }
 

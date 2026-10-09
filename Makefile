@@ -1,9 +1,13 @@
 # Database tasks for the Guildhouse. `make` on its own lists them.
 #
-# Production commands read the database address from .env.production (never committed):
-#   SUPABASE_DB_URL='postgresql://postgres.<project-ref>:<password>@<host>:5432/postgres'
-# Copy it from the Supabase dashboard: Connect, Session pooler. Keep the single quotes, and
-# percent-encode any special characters in the password (for example @ becomes %40).
+# Production commands read two lines from .env.production (never committed):
+#   SUPABASE_PROJECT_REF=<the project's reference id, the first part of its URL>
+#   SUPABASE_DB_PASSWORD=<the database password, written exactly as it is>
+# The password needs no quotes or escaping; whatever follows the = is used as typed.
+#
+# On a network without IPv6 the direct database address cannot be reached. Add a third line with
+# the Session pooler host from the dashboard's Connect button, for example:
+#   SUPABASE_DB_HOST=aws-0-us-east-1.pooler.supabase.com
 
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
@@ -11,13 +15,21 @@ SHELL := /bin/bash
 
 PROD_ENV := .env.production
 
-# Loads the production settings and stops with an explanation if anything needed is missing.
+# Reads one setting from the production file as plain text, so a password full of symbols is safe.
+setting = $$(sed -n 's/^$(1)=//p' $(PROD_ENV) | tail -1 | sed -e 's/[[:space:]]*$$//' -e "s/^'\(.*\)'$$/\1/" -e 's/^"\(.*\)"$$/\1/')
+
+# Builds the production database address and stops with an explanation if anything needed is missing.
+# Through the pooler the user name carries the project; straight to the database it is plain postgres.
 define with_prod
 	command -v supabase >/dev/null || { echo "The Supabase CLI is not installed: brew install supabase/tap/supabase"; exit 1; }; \
-	test -f $(PROD_ENV) || { echo "$(PROD_ENV) is missing. Create it with a SUPABASE_DB_URL line; see the top of the Makefile."; exit 1; }; \
-	set -a; . ./$(PROD_ENV); set +a; \
-	test -n "$$SUPABASE_DB_URL" || { echo "SUPABASE_DB_URL is not set in $(PROD_ENV); see the top of the Makefile."; exit 1; }; \
-	case "$$SUPABASE_DB_URL" in *127.0.0.1*|*localhost*) echo "SUPABASE_DB_URL in $(PROD_ENV) points at this machine, not production."; exit 1;; esac
+	test -f $(PROD_ENV) || { echo "$(PROD_ENV) is missing. Create it with the two lines described at the top of the Makefile."; exit 1; }; \
+	ref="$(call setting,SUPABASE_PROJECT_REF)"; password="$(call setting,SUPABASE_DB_PASSWORD)"; host="$(call setting,SUPABASE_DB_HOST)"; \
+	test -n "$$ref" || { echo "SUPABASE_PROJECT_REF is not set in $(PROD_ENV); see the top of the Makefile."; exit 1; }; \
+	test -n "$$password" || { echo "SUPABASE_DB_PASSWORD is not set in $(PROD_ENV); see the top of the Makefile."; exit 1; }; \
+	encoded=$$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$$password"); \
+	if [ -n "$$host" ]; then user="postgres.$$ref"; else user="postgres"; host="db.$$ref.supabase.co"; fi; \
+	SUPABASE_DB_URL="postgresql://$$user:$$encoded@$$host:5432/postgres"; \
+	echo "Production project: $$ref"
 endef
 
 help: ## List these commands
@@ -26,7 +38,7 @@ help: ## List these commands
 db-push-prod: ## Apply new migrations to the production database, after showing them and asking
 	@$(with_prod); \
 	echo "Checking production for migrations it does not have yet..."; \
-	plan=$$(supabase db push --db-url "$$SUPABASE_DB_URL" --dry-run 2>&1) || { echo "$$plan"; echo; echo "Could not reach production. Check SUPABASE_DB_URL in $(PROD_ENV)."; exit 1; }; \
+	plan=$$(supabase db push --db-url "$$SUPABASE_DB_URL" --dry-run 2>&1) || { echo "$$plan"; echo; echo "Could not reach production. Check the settings in $(PROD_ENV); on a network without IPv6, see SUPABASE_DB_HOST at the top of the Makefile."; exit 1; }; \
 	echo "$$plan" | grep -v -i -e 'new version of supabase' -e 'recommend updating'; \
 	if echo "$$plan" | grep -q -i 'up to date'; then exit 0; fi; \
 	read -r -p "Apply these to PRODUCTION? Type yes to go ahead: " answer; \

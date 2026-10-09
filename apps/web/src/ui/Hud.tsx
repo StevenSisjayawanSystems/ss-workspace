@@ -84,7 +84,7 @@ function Clock() {
 
 function NotesPill() {
   const count = useNet((s) => s.notes.length)
-  const left = useNet((s) => s.tasks.list.filter((t) => !t.done).length)
+  const left = useNet((s) => s.tasks.lists.reduce((n, l) => n + l.tasks.filter((t) => !t.done).length, 0))
   const online = useNet((s) => s.status === 'online')
   if (!online) return null
   return (

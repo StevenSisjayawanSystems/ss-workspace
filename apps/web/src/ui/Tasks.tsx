@@ -1,15 +1,16 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { MAX_TASKS, MAX_TASK_LENGTH, TASK_BONUS_SECONDS, type Task, type TaskSession } from '@guildhouse/shared'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { CATEGORY_COLORS, MAX_CATEGORIES, MAX_CATEGORY_NAME, MAX_LISTS, MAX_LIST_NAME, MAX_TASKS, MAX_TASK_LENGTH, TASK_BONUS_SECONDS, type Task, type TaskCategory, type TaskList, type TaskSession } from '@guildhouse/shared'
 import { useGame } from '../game'
-import { setStatus, todo, useNet } from '../net/net'
+import { everyone, setStatus, todo, useNet } from '../net/net'
+import { activeList, useTaskView } from '../tasksView'
 import { Icon } from './icons'
 
-// A question that has to be answered before something is thrown away.
+// A question that has to be answered before something is thrown away or closed.
 interface Question {
   title: string
   detail: string
   yes: string
-  // The way out, when "Keep" would not read right.
+  // The way out, when "Keep" would not read right; its presence also marks the answer as harmless.
   keep?: string
   run: () => void
 }
@@ -39,12 +40,35 @@ function Confirm({ ask, onClose }: { ask: Question; onClose: () => void }) {
   )
 }
 
-// One line of a list that only shows: ticked or not, and what it says.
-export function TaskLine({ task }: { task: Task }) {
+// The little diamond that stands for a category.
+export const Gem = ({ color }: { color?: string }) => <i className="gem" style={color ? { background: color } : undefined} />
+
+// A task just ticked stays where it is for a moment, struck through, before it moves on. This keeps
+// track of which ones those are.
+export function useLinger() {
+  const [lingering, setLingering] = useState<Set<string>>(new Set())
+  const tick = (task: Task) => {
+    todo.done(task.id, !task.done)
+    if (task.done) return
+    setLingering((s) => new Set(s).add(task.id))
+    setTimeout(() => setLingering((s) => (s.delete(task.id) ? new Set(s) : s)), 700)
+  }
+  return { lingering, tick }
+}
+
+// One line of a list that only shows: ticked or not, what it says, and its category.
+export function TaskLine({ task, categories = [] }: { task: Task; categories?: TaskCategory[] }) {
+  const category = categories.find((c) => c.id === task.category)
   return (
     <li className={task.done ? 'task done' : 'task'}>
       <span className="task-box">{task.done && <Icon.check />}</span>
       <span className="task-title">{task.title}</span>
+      {category && (
+        <span className="task-tag">
+          <Gem color={category.color} />
+          {category.name}
+        </span>
+      )}
     </li>
   )
 }
@@ -52,7 +76,7 @@ export function TaskLine({ task }: { task: Task }) {
 const day = (at: number) => new Date(at).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
 const hour = (at: number) => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 
-// The sessions someone has closed: when, how many tasks, and (when it is ours to read) which.
+// The sessions someone has closed: when, on which list, how many tasks, and (when it is ours to read) which.
 export function SessionLog({ sessions }: { sessions: TaskSession[] }) {
   if (!sessions.length) return <p className="profile-note">No sessions yet. One is written here each time a set of tasks is closed with "I'm done with this session".</p>
   return (
@@ -60,191 +84,414 @@ export function SessionLog({ sessions }: { sessions: TaskSession[] }) {
       {sessions.map((s) => (
         <li key={s.endedAt}>
           <div>
-            <b>{day(s.startedAt)}</b>
+            <b>{day(s.endedAt)}</b>
             <span>
-              {hour(s.startedAt)} to {hour(s.endedAt)}
+              {hour(s.endedAt)}
+              {s.list && ` · ${s.list}`}
             </span>
             <em>
               {s.done} of {s.total} done
             </em>
           </div>
-          {s.titles.length > 0 && <p>{s.titles.join(' · ')}{s.done > s.titles.length ? ` · and ${s.done - s.titles.length} more` : ''}</p>}
+          {s.titles.length > 0 && (
+            <p>
+              {s.titles.join(' · ')}
+              {s.done > s.titles.length ? ` · and ${s.done - s.titles.length} more` : ''}
+            </p>
+          )}
         </li>
       ))}
     </ul>
   )
 }
 
-// Your own to-do list: what you came here to get done. Nobody else sees it unless you share it.
+// Who can see a list: tick people who are here now. Anyone let in earlier stays listed until unticked.
+function Share({ list, onClose }: { list: TaskList; onClose: () => void }) {
+  const me = useNet((s) => s.me)
+  useNet((s) => s.ids)
+  const people = everyone().filter((p) => p.id !== me && (p.here || list.sharedWith.includes(p.id)))
+  const toggle = (id: string) => todo.shareList(list.id, list.sharedWith.includes(id) ? list.sharedWith.filter((k) => k !== id) : [...list.sharedWith, id])
+  return (
+    <div className="tasks-pop share" role="dialog" aria-label={`Share ${list.name}`}>
+      <b>Share "{list.name}" with</b>
+      {people.length === 0 && <p>Nobody else is here right now. You can share with people while they are in the guildhouse.</p>}
+      {people.map((p) => (
+        <label key={p.id}>
+          <input type="checkbox" checked={list.sharedWith.includes(p.id)} onChange={() => toggle(p.id)} />
+          <span>{p.name}</span>
+          <small>{p.here ? 'here now' : 'away'}</small>
+        </label>
+      ))}
+      <p>They can open your profile and watch this list. Only you can change it.</p>
+      <button onClick={onClose}>Done</button>
+    </div>
+  )
+}
+
+// Your to-do: several lists, tasks tagged with categories of your own, each list shared with whoever you choose.
 export function Tasks() {
   const open = useGame((s) => s.tasksOpen)
-  const { list, shared, bonusLeft } = useNet((s) => s.tasks)
+  const { lists, categories, bonusLeft } = useNet((s) => s.tasks)
+  const { active, grouped } = useTaskView()
+  const { lingering, tick } = useLinger()
   const [draft, setDraft] = useState('')
-  // The task being reworded, and the words so far.
+  const [draftTag, setDraftTag] = useState('')
+  // The task being reworded, and the words so far; likewise the list being renamed.
   const [editing, setEditing] = useState<string | null>(null)
   const [words, setWords] = useState('')
+  const [renaming, setRenaming] = useState(false)
   const [ask, setAsk] = useState<Question | null>(null)
+  // Which small panel is open: the share picker, the tag menu of one task, or the new-list and new-category fields.
+  const [pop, setPop] = useState<string | null>(null)
+  const [newName, setNewName] = useState('')
+  const [newColor, setNewColor] = useState(CATEGORY_COLORS[0])
   const [showDone, setShowDone] = useState(false)
-  // The task being dragged, and the one it is held over.
+  const [shut, setShut] = useState<Set<string>>(new Set())
+  // The task being dragged, and what it is held over.
   const [carried, setCarried] = useState<string | null>(null)
   const [over, setOver] = useState<string | null>(null)
   const field = useRef<HTMLInputElement>(null)
   const close = () => useGame.setState({ tasksOpen: false })
+  const list = activeList(lists, active)
 
   useEffect(() => {
     if (!open) return
     setEditing(null)
     setAsk(null)
-    // Escape backs out one step at a time: the question, then the edit, then the panel.
+    setPop(null)
+    setRenaming(false)
+    // Escape backs out one step at a time: a question, a small panel, an edit, then the whole thing.
     const key = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      setAsk((a) => {
-        if (!a) setEditing((id) => (id ? null : (close(), null)))
-        return null
-      })
+      let handled = false
+      setAsk((a) => ((handled ||= !!a), null))
+      setPop((p) => (handled ? p : ((handled ||= !!p), null)))
+      setEditing((id) => (handled ? id : ((handled ||= !!id), null)))
+      setRenaming((r) => (handled ? r : ((handled ||= r), false)))
+      setTimeout(() => !handled && close())
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
   }, [open])
 
-  if (!open) return null
-  const todoList = list.filter((t) => !t.done)
-  const done = list.filter((t) => t.done).sort((a, b) => b.doneAt - a.doneAt)
-  const full = list.length >= MAX_TASKS
+  useEffect(() => {
+    setPop(null)
+    setRenaming(false)
+    setEditing(null)
+  }, [list?.id])
+
+  if (!open || !list) return null
+  const todoList = list.tasks.filter((t) => !t.done || lingering.has(t.id))
+  const done = list.tasks.filter((t) => t.done && !lingering.has(t.id)).sort((a, b) => b.doneAt - a.doneAt)
+  const finished = list.tasks.filter((t) => t.done).length
+  const full = list.tasks.length >= MAX_TASKS
+  const categoryOf = (id: string) => categories.find((c) => c.id === id)
 
   const add = (e: FormEvent) => {
     e.preventDefault()
     if (!draft.trim() || full) return
-    todo.add(draft.trim())
+    todo.add(list.id, draft.trim(), draftTag)
     setDraft('')
-  }
-  const startEdit = (task: Task) => {
-    setEditing(task.id)
-    setWords(task.title)
   }
   const saveEdit = () => {
     if (editing && words.trim()) todo.edit(editing, words.trim())
     setEditing(null)
   }
-  const drop = (before?: string) => {
-    if (carried && carried !== before) todo.move(carried, before)
-    setCarried(null)
-    setOver(null)
+  const saveName = () => {
+    if (renaming && words.trim()) todo.renameList(list.id, words.trim())
+    setRenaming(false)
+  }
+  const submitNew = (e: FormEvent) => {
+    e.preventDefault()
+    if (!newName.trim()) return
+    if (pop === 'new-list') todo.addList(newName.trim())
+    else todo.addCategory(newName.trim(), newColor)
+    setNewName('')
+    setPop(null)
+  }
+  const endDrag = () => (setCarried(null), setOver(null))
+
+  const row = (task: Task) => {
+    const category = categoryOf(task.category)
+    return (
+      <li
+        key={task.id}
+        className={`task ${task.done ? 'done' : ''} ${lingering.has(task.id) ? 'lingering' : ''} ${over === task.id && carried !== task.id ? 'over' : ''} ${carried === task.id ? 'carried' : ''}`}
+        draggable={!task.done && editing !== task.id}
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = 'move'
+          setCarried(task.id)
+        }}
+        onDragOver={(e) => {
+          // In a grouped view a drop lands on the group, not between two tasks.
+          if (!carried || task.done || grouped) return
+          e.preventDefault()
+          setOver(task.id)
+        }}
+        onDrop={() => {
+          if (grouped || task.done) return
+          if (carried && carried !== task.id) todo.move(carried, task.id)
+          endDrag()
+        }}
+        onDragEnd={endDrag}
+      >
+        {!task.done && (
+          <span className="task-grip" title={grouped ? 'Drag onto a category to move it there' : 'Drag to reorder'}>
+            <Icon.grip />
+          </span>
+        )}
+        <button className="task-box" role="checkbox" aria-checked={task.done} aria-label={task.done ? `Mark "${task.title}" as not done` : `Mark "${task.title}" as done`} onClick={() => tick(task)}>
+          {task.done && <Icon.check />}
+        </button>
+        {editing === task.id ? (
+          <input className="task-edit" autoFocus maxLength={MAX_TASK_LENGTH} value={words} onChange={(e) => setWords(e.target.value)} onBlur={saveEdit} onKeyDown={(e) => e.key === 'Enter' && saveEdit()} />
+        ) : (
+          <span className="task-title" title={task.done ? undefined : 'Click to edit'} onClick={() => !task.done && (setEditing(task.id), setWords(task.title))}>
+            {task.title}
+          </span>
+        )}
+        {editing !== task.id && !task.done && (
+          <span className="task-tagger">
+            <button className={category ? 'task-tag' : 'task-tag none'} title="Change category" onClick={() => setPop(pop === `tag:${task.id}` ? null : `tag:${task.id}`)}>
+              <Gem color={category?.color} />
+              {category?.name ?? 'Tag'}
+            </button>
+            {pop === `tag:${task.id}` && (
+              <div className="tasks-pop tags">
+                {[{ id: '', name: 'No category', color: '' }, ...categories].map((c) => (
+                  <button key={c.id} className={task.category === c.id ? 'on' : ''} onClick={() => (todo.tag(task.id, c.id), setPop(null))}>
+                    <Gem color={c.color || undefined} />
+                    {c.name}
+                  </button>
+                ))}
+                {categories.length === 0 && <p>Make categories in the panel on the left.</p>}
+              </div>
+            )}
+          </span>
+        )}
+        {!task.done && editing !== task.id && (
+          <button className="task-tool" aria-label="Show this as what I am working on" title="Show this as what I am working on" onClick={() => setStatus(task.title)}>
+            <Icon.target />
+          </button>
+        )}
+        {editing !== task.id && (
+          <button className="task-tool" aria-label="Remove this task" title="Remove this task" onClick={() => setAsk({ title: 'Remove this task?', detail: task.title, yes: 'Remove', run: () => todo.remove(task.id) })}>
+            <Icon.trash />
+          </button>
+        )}
+      </li>
+    )
   }
 
-  const row = (task: Task) => (
-    <li
-      key={task.id}
-      className={`task ${task.done ? 'done' : ''} ${over === task.id && carried !== task.id ? 'over' : ''} ${carried === task.id ? 'carried' : ''}`}
-      draggable={!task.done && editing !== task.id}
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = 'move'
-        setCarried(task.id)
-      }}
-      onDragOver={(e) => {
-        if (!carried || task.done) return
-        e.preventDefault()
-        setOver(task.id)
-      }}
-      onDrop={() => !task.done && drop(task.id)}
-      onDragEnd={() => (setCarried(null), setOver(null))}
-    >
-      {!task.done && (
-        <span className="task-grip" title="Drag to reorder">
-          <Icon.grip />
-        </span>
-      )}
-      <button className="task-box" role="checkbox" aria-checked={task.done} aria-label={task.done ? `Mark "${task.title}" as not done` : `Mark "${task.title}" as done`} onClick={() => todo.done(task.id, !task.done)}>
-        {task.done && <Icon.check />}
-      </button>
-      {editing === task.id ? (
-        <input className="task-edit" autoFocus maxLength={MAX_TASK_LENGTH} value={words} onChange={(e) => setWords(e.target.value)} onBlur={saveEdit} onKeyDown={(e) => e.key === 'Enter' && saveEdit()} />
-      ) : (
-        <span className="task-title" title={task.done ? undefined : 'Click to edit'} onClick={() => !task.done && startEdit(task)}>
-          {task.title}
-        </span>
-      )}
-      {!task.done && editing !== task.id && (
-        <button className="task-tool" aria-label="Show this as what I am working on" title="Show this as what I am working on" onClick={() => setStatus(task.title)}>
-          <Icon.target />
+  // Grouped: one section per category that has tasks (or is being dragged onto), then the untagged ones.
+  const groups: { id: string; name: string; color?: string; tasks: Task[] }[] = [...categories.map((c) => ({ ...c, tasks: todoList.filter((t) => t.category === c.id) })), { id: '', name: 'No category', tasks: todoList.filter((t) => !categoryOf(t.category)) }].filter((g) => g.tasks.length || carried)
+
+  let body: ReactNode
+  if (!grouped) {
+    body = (
+      <ul
+        className="tasks-open"
+        onDragOver={(e) => carried && e.preventDefault()}
+        onDrop={(e) => {
+          if (e.target === e.currentTarget && carried) todo.move(carried)
+          endDrag()
+        }}
+      >
+        {todoList.map(row)}
+      </ul>
+    )
+  } else {
+    body = groups.map((g) => (
+      <section
+        key={g.id}
+        className={`tasks-group ${over === `group:${g.id}` ? 'over' : ''}`}
+        onDragOver={(e) => {
+          if (!carried) return
+          e.preventDefault()
+          setOver(`group:${g.id}`)
+        }}
+        onDrop={() => {
+          if (carried) todo.tag(carried, g.id)
+          endDrag()
+        }}
+      >
+        <button className="tasks-group-head" aria-expanded={!shut.has(g.id)} onClick={() => setShut((s) => (s.has(g.id) ? new Set([...s].filter((x) => x !== g.id)) : new Set(s).add(g.id)))}>
+          <Gem color={g.color} />
+          <span>{g.name}</span>
+          <em>{g.tasks.length}</em>
+          <i>{shut.has(g.id) ? '▸' : '▾'}</i>
         </button>
-      )}
-      {editing !== task.id && (
-        <button className="task-tool" aria-label="Remove this task" title="Remove this task" onClick={() => setAsk({ title: 'Remove this task?', detail: task.title, yes: 'Remove', run: () => todo.remove(task.id) })}>
-          <Icon.trash />
-        </button>
-      )}
-    </li>
-  )
+        {!shut.has(g.id) && <ul>{g.tasks.map(row)}</ul>}
+      </section>
+    ))
+  }
 
   return (
     <div className="tasks-scrim" onClick={close}>
-      <div className="tasks" role="dialog" aria-label="My tasks" onClick={(e) => e.stopPropagation()}>
-        <div className="tasks-head">
-          <span>My tasks</span>
-          <em>
-            {done.length} of {list.length} done
-          </em>
-          <button className="icon-btn small" aria-label="Close" title="Close" onClick={close}>
-            <Icon.close />
-          </button>
-        </div>
-        {list.length > 0 && (
-          <div className="journey-bar">
-            <div style={{ width: `${Math.round((done.length / list.length) * 100)}%` }} />
-          </div>
-        )}
-        <form className="tasks-add" onSubmit={add}>
-          <input ref={field} autoFocus value={draft} maxLength={MAX_TASK_LENGTH} disabled={full} placeholder={full ? 'That is a full list. Clear some to add more' : 'Add a task and press Enter'} onChange={(e) => setDraft(e.target.value)} />
-          <button className="icon-btn on" aria-label="Add task" title="Add task" disabled={!draft.trim() || full}>
-            <Icon.plus />
-          </button>
-        </form>
-        <div className="tasks-body">
-          {list.length === 0 && <p className="tasks-empty">Nothing down yet. What did you come here to get done?</p>}
-          <ul onDragOver={(e) => carried && e.preventDefault()} onDrop={(e) => e.target === e.currentTarget && drop()}>
-            {todoList.map(row)}
+      <div className="tasks" role="dialog" aria-label="Tasks" onClick={(e) => e.stopPropagation()}>
+        <nav className="tasks-rail">
+          <h4>Lists</h4>
+          <ul>
+            {lists.map((l) => {
+              const left = l.tasks.filter((t) => !t.done).length
+              return (
+                <li key={l.id}>
+                  <button className={l.id === list.id ? 'on' : ''} onClick={() => useTaskView.setState({ active: l.id })}>
+                    <span>{l.name}</span>
+                    {l.sharedWith.length > 0 && <Icon.people />}
+                    {left > 0 && <em>{left}</em>}
+                  </button>
+                </li>
+              )
+            })}
           </ul>
-          {todoList.length === 0 && done.length > 0 && <p className="tasks-empty">All done. Nice work.</p>}
-          {done.length > 0 && (
-            <>
-              <div className="tasks-done-head">
-                <button onClick={() => setShowDone(!showDone)} aria-expanded={showDone}>
-                  {showDone ? '▾' : '▸'} Completed ({done.length})
-                </button>
-                <button onClick={() => setAsk({ title: 'Clear completed tasks?', detail: `${done.length} finished ${done.length === 1 ? 'task' : 'tasks'} will be removed without being logged. To keep a record, use "I'm done with this session" instead.`, yes: 'Clear', run: () => todo.clear() })}>Clear without logging</button>
-              </div>
-              {showDone && <ul>{done.map(row)}</ul>}
-            </>
+          {pop === 'new-list' ? (
+            <form onSubmit={submitNew}>
+              <input autoFocus placeholder="Name the list" maxLength={MAX_LIST_NAME} value={newName} onChange={(e) => setNewName(e.target.value)} onBlur={() => !newName && setPop(null)} />
+            </form>
+          ) : (
+            lists.length < MAX_LISTS && (
+              <button className="tasks-new" onClick={() => (setNewName(''), setPop('new-list'))}>
+                <Icon.plus />
+                New list
+              </button>
+            )
           )}
+
+          <h4>Categories</h4>
+          <ul className="tasks-cats">
+            {categories.map((c) => (
+              <li key={c.id}>
+                <Gem color={c.color} />
+                <span>{c.name}</span>
+                <button aria-label={`Remove the category ${c.name}`} title="Remove category" onClick={() => setAsk({ title: `Remove "${c.name}"?`, detail: 'Tasks tagged with it stay on their lists, without a category.', yes: 'Remove', run: () => todo.removeCategory(c.id) })}>
+                  <Icon.close />
+                </button>
+              </li>
+            ))}
+          </ul>
+          {pop === 'new-category' ? (
+            <form onSubmit={submitNew}>
+              <input autoFocus placeholder="Name the category" maxLength={MAX_CATEGORY_NAME} value={newName} onChange={(e) => setNewName(e.target.value)} />
+              <div className="tasks-colors">
+                {CATEGORY_COLORS.map((c) => (
+                  <button key={c} type="button" aria-label={`Colour ${c}`} className={c === newColor ? 'on' : ''} style={{ background: c }} onClick={() => setNewColor(c)} />
+                ))}
+              </div>
+            </form>
+          ) : (
+            categories.length < MAX_CATEGORIES && (
+              <button
+                className="tasks-new"
+                onClick={() => {
+                  setNewName('')
+                  setNewColor(CATEGORY_COLORS[categories.length % CATEGORY_COLORS.length])
+                  setPop('new-category')
+                }}
+              >
+                <Icon.plus />
+                New category
+              </button>
+            )
+          )}
+        </nav>
+
+        <div className="tasks-main" key={list.id}>
+          <div className="tasks-head">
+            {renaming ? (
+              <input className="task-edit" autoFocus maxLength={MAX_LIST_NAME} value={words} onChange={(e) => setWords(e.target.value)} onBlur={saveName} onKeyDown={(e) => e.key === 'Enter' && saveName()} />
+            ) : (
+              <h3 title="Click to rename" onClick={() => (setWords(list.name), setRenaming(true))}>
+                {list.name}
+              </h3>
+            )}
+            <em>
+              {finished} of {list.tasks.length} done
+            </em>
+            <button className={`tasks-chip ${list.sharedWith.length ? 'on' : ''}`} title="Choose who can see this list" onClick={() => setPop(pop === 'share' ? null : 'share')}>
+              <Icon.people />
+              {list.sharedWith.length ? `Shared with ${list.sharedWith.length}` : 'Share'}
+            </button>
+            {lists.length > 1 && (
+              <button className="task-tool" aria-label="Remove this list" title="Remove this list" onClick={() => setAsk({ title: `Remove "${list.name}"?`, detail: list.tasks.length ? `The list and its ${list.tasks.length} ${list.tasks.length === 1 ? 'task' : 'tasks'} will be gone. Sessions already logged stay on your profile.` : 'The list will be gone.', yes: 'Remove list', run: () => todo.removeList(list.id) })}>
+                <Icon.trash />
+              </button>
+            )}
+            <button className="icon-btn small" aria-label="Close" title="Close" onClick={close}>
+              <Icon.close />
+            </button>
+            {pop === 'share' && <Share list={list} onClose={() => setPop(null)} />}
+          </div>
+          <div className="journey-bar">
+            <div style={{ width: `${list.tasks.length ? Math.round((finished / list.tasks.length) * 100) : 0}%` }} />
+          </div>
+
+          <form className="tasks-add" onSubmit={add}>
+            <input ref={field} autoFocus value={draft} maxLength={MAX_TASK_LENGTH} disabled={full} placeholder={full ? 'That is a full list. Clear some to add more' : 'Add a task and press Enter'} onChange={(e) => setDraft(e.target.value)} />
+            {categories.length > 0 && (
+              <select aria-label="Category for the new task" value={categoryOf(draftTag) ? draftTag : ''} onChange={(e) => setDraftTag(e.target.value)}>
+                <option value="">No category</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button className="icon-btn on" aria-label="Add task" title="Add task" disabled={!draft.trim() || full}>
+              <Icon.plus />
+            </button>
+          </form>
+
+          <div className="tasks-bar">
+            <button className={grouped ? '' : 'on'} onClick={() => useTaskView.setState({ grouped: false })}>
+              In order
+            </button>
+            <button className={grouped ? 'on' : ''} onClick={() => useTaskView.setState({ grouped: true })}>
+              By category
+            </button>
+          </div>
+
+          <div className="tasks-body">
+            {list.tasks.length === 0 && <p className="tasks-empty">Nothing down yet. What did you come here to get done?</p>}
+            {body}
+            {todoList.length === 0 && done.length > 0 && <p className="tasks-empty">All done. Nice work.</p>}
+            {done.length > 0 && (
+              <>
+                <div className="tasks-done-head">
+                  <button onClick={() => setShowDone(!showDone)} aria-expanded={showDone}>
+                    {showDone ? '▾' : '▸'} Completed ({done.length})
+                  </button>
+                  <button onClick={() => setAsk({ title: 'Clear completed tasks?', detail: `${done.length} finished ${done.length === 1 ? 'task' : 'tasks'} will be removed without being logged. To keep a record, use "I'm done with this session" instead.`, yes: 'Clear', run: () => todo.clear(list.id) })}>Clear without logging</button>
+                </div>
+                {showDone && <ul>{done.map(row)}</ul>}
+              </>
+            )}
+          </div>
+
+          <div className="tasks-foot">
+            <p>
+              Each task you finish grows your plant by {TASK_BONUS_SECONDS / 60} minutes. {bonusLeft > 0 ? `${bonusLeft} more will count today.` : 'That is all that count for today; the rest are for you.'}
+            </p>
+            <button
+              className="tasks-finish"
+              disabled={finished === 0}
+              title={finished === 0 ? 'Finish at least one task first' : undefined}
+              onClick={() =>
+                setAsk({
+                  title: 'Done with this session?',
+                  detail: `${finished} finished ${finished === 1 ? 'task' : 'tasks'} on "${list.name}" will be logged on your profile and cleared.${list.tasks.length - finished ? ` The ${list.tasks.length - finished} unfinished ${list.tasks.length - finished === 1 ? 'one stays' : 'stay'} for next time.` : ''}`,
+                  yes: 'Log session',
+                  keep: 'Not yet',
+                  run: () => todo.finish(list.id),
+                })
+              }
+            >
+              <Icon.check />
+              I'm done with this session
+            </button>
+          </div>
         </div>
-        <button
-          className="tasks-finish"
-          disabled={done.length === 0}
-          title={done.length === 0 ? 'Finish at least one task first' : undefined}
-          onClick={() =>
-            setAsk({
-              title: 'Done with this session?',
-              detail: `${done.length} finished ${done.length === 1 ? 'task' : 'tasks'} will be logged on your profile and cleared from the list.${todoList.length ? ` The ${todoList.length} unfinished ${todoList.length === 1 ? 'one stays' : 'stay'} for next time.` : ''}`,
-              yes: 'Log session',
-              keep: 'Not yet',
-              run: () => todo.finish(),
-            })
-          }
-        >
-          <Icon.check />
-          I'm done with this session
-        </button>
-        <label className="tasks-share">
-          <input type="checkbox" checked={shared} onChange={(e) => todo.share(e.target.checked)} />
-          <span>
-            <b>Let others see my list</b>
-            {shared ? 'Anyone here can open your profile and follow along.' : 'Only you can see it. Others see how many you finish, not what.'}
-          </span>
-        </label>
-        <p className="tasks-note">
-          Each task you finish grows your plant by {TASK_BONUS_SECONDS / 60} minutes. {bonusLeft > 0 ? `${bonusLeft} more will count today.` : 'That is all that count for today; the rest are for you.'}
-        </p>
         {ask && <Confirm ask={ask} onClose={() => setAsk(null)} />}
       </div>
     </div>

@@ -186,7 +186,8 @@ export function Profile() {
   ]
 
   const theirTasks = tasksOf[key]
-  const nowList = self ? myTasks.list : (theirTasks?.list ?? [])
+  const shownLists = self ? myTasks.lists : (theirTasks?.lists ?? [])
+  const shownCategories = self ? myTasks.categories : (theirTasks?.categories ?? [])
 
   // Their bonds, strongest first; and the one between them and us, which our own list always has fresh.
   const bonds = [...(allBonds[key] ?? [])].sort((a, b) => bondPoints(b) - bondPoints(a))
@@ -259,25 +260,31 @@ export function Profile() {
 
               {tab === 'Tasks' && (
                 <>
-                  <h3>
-                    Right now
-                    {(self || theirTasks?.shared) && (
-                      <span>
-                        {nowList.filter((t) => t.done).length} of {nowList.length} done
-                      </span>
-                    )}
-                  </h3>
-                  {!self && !theirTasks?.shared ? (
-                    <p className="profile-note">{name} keeps their list to themselves.</p>
-                  ) : nowList.length === 0 ? (
-                    <p className="profile-note">{self ? 'Nothing on your list.' : `Nothing on ${name}'s list right now.`}</p>
-                  ) : (
-                    <ul className="tasks-view">
-                      {nowList.map((t) => (
-                        <TaskLine key={t.id} task={t} />
-                      ))}
-                    </ul>
+                  {shownLists.length === 0 && (
+                    <>
+                      <h3>Right now</h3>
+                      <p className="profile-note">{name} has not shared a list with you. They can, from their tasks, while you are both here.</p>
+                    </>
                   )}
+                  {shownLists.map((l) => (
+                    <div key={l.id} className="profile-list">
+                      <h3>
+                        {l.name}
+                        <span>
+                          {l.tasks.filter((t) => t.done).length} of {l.tasks.length} done
+                        </span>
+                      </h3>
+                      {l.tasks.length === 0 ? (
+                        <p className="profile-note">Nothing on this list.</p>
+                      ) : (
+                        <ul className="tasks-view">
+                          {l.tasks.map((t) => (
+                            <TaskLine key={t.id} task={t} categories={shownCategories} />
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
                   {self && (
                     <button
                       className="profile-open"

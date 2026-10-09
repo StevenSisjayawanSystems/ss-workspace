@@ -1,5 +1,5 @@
 import { NEW_PROGRESS, levelOf, visit, xpOf, type Progress, type TaskSession } from '@guildhouse/shared'
-import type { KeptTask } from './tasks'
+import { newTodo, type Todo } from './tasks'
 
 // Someone in the guildhouse, however many tabs they have open. The server keeps their progress,
 // so it is the same on every device and cannot be edited from a browser.
@@ -19,10 +19,10 @@ export interface Member {
   about: string
   // Time spent in shared focus sessions, which is what grows their plants in the Focus Garden.
   focusSeconds: number
-  // Their to-do list, whether others may see it, and the sessions they have closed, latest first.
-  tasks: KeptTask[]
-  tasksShared: boolean
-  log: (TaskSession & { shared: boolean })[]
+  // Their to-do lists and categories, and the sessions they have closed, latest first. A session's
+  // titles are for the people its list was shared with at the time.
+  todo: Todo
+  log: (TaskSession & { sharedWith: string[] })[]
   // Tasks that have helped their plant today, and which day "today" was.
   bonusDay: string
   bonusCount: number
@@ -58,7 +58,7 @@ export function cleanProgress(raw: unknown): Progress {
   }
 }
 
-export const newMember = (key: string, account: boolean, name: string, progress: Progress = NEW_PROGRESS, seenAt = Date.now(), since = Date.now(), about = ''): Member => ({ key, account, name, progress: { ...progress }, sessions: new Set(), tzOffset: 0, seenAt, since, about, focusSeconds: 0, tasks: [], tasksShared: false, log: [], bonusDay: '', bonusCount: 0, alarmAt: 0, alarmLabel: '', dirty: true })
+export const newMember = (key: string, account: boolean, name: string, progress: Progress = NEW_PROGRESS, seenAt = Date.now(), since = Date.now(), about = ''): Member => ({ key, account, name, progress: { ...progress }, sessions: new Set(), tzOffset: 0, seenAt, since, about, focusSeconds: 0, todo: newTodo(Date.now()), log: [], bonusDay: '', bonusCount: 0, alarmAt: 0, alarmLabel: '', dirty: true })
 
 // Credits time spent here. Being present on a new day counts as a visit.
 export function accrue(m: Member, seconds: number, inCall: boolean, now: number) {

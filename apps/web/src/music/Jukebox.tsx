@@ -54,6 +54,9 @@ const savedVolume = () => {
 
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
+// Music the house keeps to hand: one press puts it in the queue. Add more here.
+const PICKS = [{ videoId: 'jzAxOE3Fufk', title: 'Jazzy lo-fi beats for study and focus' }]
+
 export function Jukebox() {
   const juke = useNet((s) => s.juke)
   const error = useNet((s) => s.jukeError)
@@ -223,6 +226,19 @@ export function Jukebox() {
           </button>
         </form>
         {error && <div className="juke-error">{error}</div>}
+        <div className="juke-picks">
+          <span>House picks</span>
+          {PICKS.map((pick) => {
+            const queued = juke.queue.some((t) => t.videoId === pick.videoId)
+            return (
+              <button key={pick.videoId} disabled={queued} title={queued ? 'Already in the queue' : 'Add to the queue'} onClick={() => jukebox.add(`https://www.youtube.com/watch?v=${pick.videoId}`)}>
+                <Icon.note />
+                <b>{pick.title}</b>
+                {queued ? <i>Queued</i> : <Icon.plus />}
+              </button>
+            )
+          })}
+        </div>
         <label className="juke-volume">
           <span>{muted ? 'Muted for you' : `Volume${inTavern ? '' : ' (quieter outside the tavern)'}`}</span>
           <input type="range" min={0} max={100} value={volume} onChange={(e) => setVolume(Number(e.target.value))} />
