@@ -8,7 +8,6 @@ import { Chat } from './ui/Chat'
 import { Hud } from './ui/Hud'
 import { Join } from './ui/Join'
 import { Schedule } from './ui/Schedule'
-import { Quests } from './ui/Quests'
 import { Tasks } from './ui/Tasks'
 import { Joystick } from './ui/Joystick'
 
@@ -29,7 +28,6 @@ export function App() {
           <CallBar />
           <Board />
           <Schedule />
-          <Quests />
           <Tasks />
           {touch && <Joystick />}
         </>

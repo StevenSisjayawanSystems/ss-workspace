@@ -4,6 +4,7 @@ import { when } from '../time'
 import { useVoice } from '../voice/voice'
 import { Icon } from './icons'
 import { Rich, useMentions } from './Mention'
+import { Quests } from './Quests'
 
 const EMOTE_ICONS: [Emote, () => React.JSX.Element, string][] = [
   ['wave', Icon.wave, 'Wave'],
@@ -76,6 +77,8 @@ export function Chat({ docked = false }: { docked?: boolean }) {
   if (!active) return null
   return (
     <div className={`chat ${docked ? 'docked' : ''} ${tall ? 'tall' : ''}`}>
+      {/* The quest tracker rides on top of the chat, so the two never fight for the same corner. */}
+      {!docked && <Quests />}
       <div className="chat-tabs">
         <button className={talk === '' ? 'on' : ''} onClick={() => turnTo('')}>
           Room

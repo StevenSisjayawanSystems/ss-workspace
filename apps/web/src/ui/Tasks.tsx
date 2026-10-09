@@ -51,7 +51,7 @@ export function useLinger() {
     todo.done(task.id, !task.done)
     if (task.done) return
     setLingering((s) => new Set(s).add(task.id))
-    setTimeout(() => setLingering((s) => (s.delete(task.id) ? new Set(s) : s)), 700)
+    setTimeout(() => setLingering((s) => new Set([...s].filter((id) => id !== task.id))), 700)
   }
   return { lingering, tick }
 }

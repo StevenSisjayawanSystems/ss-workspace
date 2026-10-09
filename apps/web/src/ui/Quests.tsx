@@ -6,11 +6,9 @@ import { activeList, useTaskView } from '../tasksView'
 import { Icon } from './icons'
 import { Gem, useLinger } from './Tasks'
 
-// How many tasks the tracker shows before it says "and more".
-const SHOWN = 7
-
-// The quest tracker: one of your lists, pinned to the side of the screen like the quest log of a
-// game, so what you came to do stays in view. Tick things off here; open the full panel for the rest.
+// The quest tracker: one of your lists, sitting just above the chat like the quest log of a game, so
+// what you came to do stays in view. The list's name is at the top, with arrows to turn to the next
+// one. Tick things off here; press the name to open the full panel.
 export function Quests() {
   const online = useNet((s) => s.status === 'online')
   const { lists, categories } = useNet((s) => s.tasks)
@@ -34,39 +32,34 @@ export function Quests() {
   return (
     <aside className={folded ? 'quests folded' : 'quests'} aria-label="Quest tracker">
       <header>
-        <button className="quests-title" title="Open all your tasks" onClick={full}>
+        {lists.length > 1 && (
+          <button className="quests-turn" aria-label="Previous list" title="Previous list" onClick={() => turn(-1)}>
+            ◂
+          </button>
+        )}
+        <button className="quests-name" title="Open all your tasks" onClick={full}>
           <i />
-          Quests
+          <span>{list.name}</span>
         </button>
+        {lists.length > 1 && (
+          <button className="quests-turn" aria-label="Next list" title="Next list" onClick={() => turn(1)}>
+            ▸
+          </button>
+        )}
         <em>
           {finished}/{list.tasks.length}
         </em>
-        <button className="quests-fold" aria-label={folded ? 'Show quests' : 'Hide quests'} title={folded ? 'Show quests' : 'Hide quests'} aria-expanded={!folded} onClick={() => useTaskView.setState({ folded: !folded })}>
+        <button className="quests-fold" aria-label={folded ? 'Show tasks' : 'Hide tasks'} title={folded ? 'Show tasks' : 'Hide tasks'} aria-expanded={!folded} onClick={() => useTaskView.setState({ folded: !folded })}>
           {folded ? '▸' : '▾'}
         </button>
       </header>
       {!folded && (
         <div className="quests-body" key={list.id}>
-          <div className="quests-list">
-            {lists.length > 1 && (
-              <button aria-label="Previous list" title="Previous list" onClick={() => turn(-1)}>
-                ‹
-              </button>
-            )}
-            <button className="quests-name" title="Open this list" onClick={full}>
-              {list.name}
-            </button>
-            {lists.length > 1 && (
-              <button aria-label="Next list" title="Next list" onClick={() => turn(1)}>
-                ›
-              </button>
-            )}
-          </div>
           <div className="journey-bar">
             <div style={{ width: `${list.tasks.length ? Math.round((finished / list.tasks.length) * 100) : 0}%` }} />
           </div>
           <ul>
-            {openTasks.slice(0, SHOWN).map((task) => {
+            {openTasks.map((task) => {
               const category = categories.find((c) => c.id === task.category)
               return (
                 <li key={task.id} className={`task ${task.done ? 'done' : ''} ${lingering.has(task.id) ? 'lingering' : ''}`}>
@@ -81,14 +74,9 @@ export function Quests() {
               )
             })}
           </ul>
-          {openTasks.length > SHOWN && (
-            <button className="quests-more" onClick={full}>
-              and {openTasks.length - SHOWN} more
-            </button>
-          )}
-          {openTasks.length === 0 && <p>{list.tasks.length ? 'All done here.' : 'No quests yet.'}</p>}
+          {openTasks.length === 0 && <p>{list.tasks.length ? 'All done here.' : 'Nothing on this list yet.'}</p>}
           <form onSubmit={add}>
-            <input value={draft} maxLength={MAX_TASK_LENGTH} placeholder="Add a quest" aria-label="Add a quest" onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && e.currentTarget.blur()} />
+            <input value={draft} maxLength={MAX_TASK_LENGTH} placeholder="Add a task" aria-label="Add a task" onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && e.currentTarget.blur()} />
           </form>
         </div>
       )}

@@ -4512,53 +4512,60 @@ button.task-tag:hover {
   overflow-wrap: anywhere;
 }
 
-/* Quest tracker: one list pinned to the right edge, under the jukebox and above the map. When the
-   jukebox opens it steps aside to the left of it rather than sitting underneath. */
+/* Quest tracker: one list, riding on top of the chat in the bottom-left corner. Its name is the
+   heading, with arrows either side to turn to the next list. */
 .quests {
-  position: fixed;
-  top: calc(max(16px, env(safe-area-inset-top)) + 88px);
-  right: max(16px, env(safe-area-inset-right));
   display: flex;
   flex-direction: column;
-  width: 252px;
-  max-height: calc(100dvh - 104px - 262px);
-  background: rgba(14, 23, 38, 0.9);
+  margin-bottom: 8px;
+  background: var(--panel);
   border-radius: 3px;
-  box-shadow: var(--edge);
-  z-index: 1;
-  transition: right 0.28s cubic-bezier(0.3, 0.8, 0.3, 1);
   animation: quests-in 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
 
 @keyframes quests-in {
   from {
     opacity: 0;
-    transform: translateX(16px);
+    transform: translateY(8px);
   }
-}
-
-body:has(.jukebox.open) .quests {
-  right: calc(max(16px, env(safe-area-inset-right)) + 312px);
-}
-
-.quests.folded {
-  width: auto;
 }
 
 .quests header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 8px 7px 12px;
+  gap: 2px;
+  padding: 5px 6px 5px 4px;
 }
 
-.quests-title {
+.quests-turn {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font: 800 15px var(--ui);
+  line-height: 1;
+  color: var(--cream);
+  background: none;
+  border: 0;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.quests-turn:hover {
+  color: var(--gold);
+  background: var(--well);
+}
+
+.quests-name {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 0;
-  font: 700 11px var(--display);
-  letter-spacing: 0.2em;
+  padding: 2px 6px;
+  font: 700 11.5px var(--display);
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--gold);
   background: none;
@@ -4566,19 +4573,28 @@ body:has(.jukebox.open) .quests {
   cursor: pointer;
 }
 
-.quests-title:hover {
+.quests-name:hover {
   color: var(--cream);
 }
 
-.quests-title i {
+.quests-name i {
+  flex: none;
   width: 7px;
   height: 7px;
   background: var(--gold);
   transform: rotate(45deg);
 }
 
+.quests-name span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .quests header em {
-  margin-left: auto;
+  flex: none;
+  padding: 0 4px;
   font: 800 11px var(--ui);
   font-style: normal;
   font-variant-numeric: tabular-nums;
@@ -4586,6 +4602,7 @@ body:has(.jukebox.open) .quests {
 }
 
 .quests-fold {
+  flex: none;
   width: 22px;
   height: 22px;
   padding: 0;
@@ -4604,47 +4621,13 @@ body:has(.jukebox.open) .quests {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 0 12px 10px;
-  border-top: 1px solid rgba(216, 178, 94, 0.2);
+  padding: 0 10px 9px;
   animation: fade-in 0.2s ease-out;
 }
 
-.quests-list {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 7px 0 6px;
-}
-
-.quests-list button {
-  flex: none;
-  padding: 0 5px;
-  font: 800 15px var(--ui);
-  line-height: 1;
-  color: #9aa6ba;
-  background: none;
-  border: 0;
-  cursor: pointer;
-}
-
-.quests-list button:hover {
-  color: var(--gold);
-}
-
-.quests-list .quests-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  font-size: 13px;
-  color: var(--cream);
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
+/* The list takes what height the screen can spare between the pills above and the chat below. */
 .quests ul {
-  flex: 1;
-  min-height: 0;
+  max-height: clamp(64px, calc(100dvh - 500px), 300px);
   margin: 6px 0 0;
   padding: 0;
   overflow-y: auto;
@@ -4653,8 +4636,8 @@ body:has(.jukebox.open) .quests {
 
 .quests .task {
   min-height: 30px;
-  padding: 2px 0;
-  font-size: 13px;
+  padding: 2px 2px 2px 0;
+  font-size: 13.5px;
   border: 0;
 }
 
@@ -4673,30 +4656,18 @@ body:has(.jukebox.open) .quests {
   cursor: default;
 }
 
-.quests p,
-.quests-more {
-  margin: 6px 0 0;
-  padding: 0;
-  font: 600 12px var(--ui);
+.quests p {
+  margin: 8px 0 2px;
+  font: 600 12.5px var(--ui);
   color: #7f8aa0;
-  text-align: left;
-  background: none;
-  border: 0;
-}
-
-.quests-more {
-  cursor: pointer;
-}
-
-.quests-more:hover {
-  color: var(--gold);
 }
 
 .quests form {
-  margin-top: 8px;
+  display: block;
+  margin-top: 6px;
 }
 
-.quests input {
+.quests form input {
   width: 100%;
   padding: 5px 9px;
   font: inherit;
@@ -4709,25 +4680,26 @@ body:has(.jukebox.open) .quests {
   transition: border-color 0.12s, background 0.12s;
 }
 
-.quests input::placeholder {
+.quests form input::placeholder {
   color: #7f8aa0;
 }
 
-.quests input:focus {
+.quests form input:focus {
   background: var(--well);
   border: 1px solid var(--gold-deep);
 }
 
-/* Not enough room beside an open jukebox, or on a phone: the Tasks pill opens the full panel instead. */
-@media (max-width: 1180px) {
-  body:has(.jukebox.open) .quests {
-    display: none;
-  }
+/* The corner is shared: with the roster or timer open above, or the chat stretched tall, or on a
+   short or touch screen, the tracker keeps to its heading and the tasks wait behind it. */
+body:has(.roster) .quests-body,
+body:has(.pomo) .quests-body,
+.chat.tall .quests-body {
+  display: none;
 }
 
-@media (max-width: 760px), (pointer: coarse), (max-height: 560px) {
-  .quests {
-    display: none;
+@media (max-height: 560px), (pointer: coarse) {
+  .quests ul {
+    max-height: 92px;
   }
 }
 
