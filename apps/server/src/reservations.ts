@@ -3,10 +3,11 @@ import { join } from 'node:path'
 import { schema, t, type SchemaType } from '@colyseus/schema'
 import { BOOKABLE_ZONES, BOOKING_MINUTES, deskById, deskOfSeat, type ZoneId } from '@guildhouse/shared'
 
-// People are identified by the name they enter (there are no accounts yet), so a desk or a booking
-// belongs to a name. That is enough for a team that knows each other.
+// A desk belongs to an account (`member`) and shows its owner's current name; the rules below go by
+// that name, which the room keeps in step with the account. On a server without accounts `member`
+// is empty and the name is all there is. Bookings go by name.
 
-export const DeskClaim = schema({ deskId: t.string(), owner: t.string() }, 'DeskClaim')
+export const DeskClaim = schema({ deskId: t.string(), owner: t.string(), member: t.string() }, 'DeskClaim')
 export type DeskClaim = SchemaType<typeof DeskClaim>
 
 // A meeting room booked for a stretch of time. A booking is an entry on the schedule by the door:
@@ -49,7 +50,7 @@ export const BOOK_AHEAD_DAYS = 7
 export const MAX_BOOKINGS = 80
 
 // One desk each: claiming a new one gives up the old. Returns why it failed, or null.
-export function claimDesk(s: Lists, deskId: unknown, owner: string): string | null {
+export function claimDesk(s: Lists, deskId: unknown, owner: string, member = ''): string | null {
   const desk = typeof deskId === 'string' ? deskById(deskId) : undefined
   if (!desk) return 'Only desks in the Main Workroom can be claimed'
   const held = s.desks.find((c) => c.deskId === desk.id)
@@ -58,6 +59,7 @@ export function claimDesk(s: Lists, deskId: unknown, owner: string): string | nu
   const c = new DeskClaim()
   c.deskId = desk.id
   c.owner = owner
+  c.member = member
   s.desks.push(c)
   return null
 }
@@ -161,11 +163,50 @@ export function seatRefusal(s: Lists, seatId: string, seatZone: string, name: st
 export const KNOCK = 'The door is closed'
 
 export interface SavedReservations {
-  desks: { deskId: string; owner: string }[]
+  desks: { deskId: string; owner: string; member: string }[]
   bookings: { id: string; zone: string; by: string; start: number; until: number }[]
 }
 
 // Desk claims and bookings are kept across restarts, in the same folder as the bulletin board notes.
+// Desk claims and bookings as they are saved, wherever that is.
+export const snapshot = (s: Lists): SavedReservations => ({
+  desks: s.desks.map((c) => ({ deskId: c.deskId, owner: c.owner, member: c.member })),
+  bookings: s.bookings.map((b) => ({ id: b.id, zone: b.zone, by: b.by, start: b.start, until: b.until })),
+})
+
+// Takes whatever was saved and keeps only what still makes sense.
+export function readReservations(raw: any): SavedReservations {
+  const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '')
+  return {
+    desks: (Array.isArray(raw?.desks) ? raw.desks : [])
+      .filter((c: any) => c && str(c.owner, 20) && deskById(c.deskId))
+      .map((c: any) => ({ deskId: c.deskId, owner: str(c.owner, 20), member: str(c.member, 40) })),
+    bookings: (Array.isArray(raw?.bookings) ? raw.bookings : [])
+      .filter((b: any) => b && BOOKABLE_ZONES.includes(b.zone) && str(b.by, 20) && Number.isFinite(b.start) && Number.isFinite(b.until) && b.until > b.start)
+      .map((b: any) => ({ id: str(b.id, 40) || `${b.start}`, zone: b.zone, by: str(b.by, 20), start: b.start, until: b.until })),
+  }
+}
+
+// Someone goes by a new name: their desk follows the account, and their bookings follow the old name.
+export function renamed(s: Lists, member: string, was: string, now: string): boolean {
+  let changed = false
+  for (const c of s.desks) {
+    if ((member ? c.member === member : !c.member && c.owner === was) && c.owner !== now) {
+      c.owner = now
+      changed = true
+    }
+  }
+  if (was !== now) {
+    for (const b of s.bookings) {
+      if (b.by === was) {
+        b.by = now
+        changed = true
+      }
+    }
+  }
+  return changed
+}
+
 export class ReservationStore {
   private file: string | null
   constructor(dir: string | undefined) {
@@ -180,41 +221,27 @@ export class ReservationStore {
   }
 
   load(): SavedReservations {
-    const empty: SavedReservations = { desks: [], bookings: [] }
-    if (!this.file) return empty
+    if (!this.file) return readReservations(null)
     try {
-      const raw = JSON.parse(readFileSync(this.file, 'utf8'))
-      const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '')
-      return {
-        desks: (Array.isArray(raw?.desks) ? raw.desks : [])
-          .filter((c: any) => c && str(c.owner, 20) && deskById(c.deskId))
-          .map((c: any) => ({ deskId: c.deskId, owner: str(c.owner, 20) })),
-        bookings: (Array.isArray(raw?.bookings) ? raw.bookings : [])
-          .filter((b: any) => b && BOOKABLE_ZONES.includes(b.zone) && str(b.by, 20) && Number.isFinite(b.start) && Number.isFinite(b.until) && b.until > b.start)
-          .map((b: any) => ({ id: str(b.id, 40) || `${b.start}`, zone: b.zone, by: str(b.by, 20), start: b.start, until: b.until })),
-      }
+      return readReservations(JSON.parse(readFileSync(this.file, 'utf8')))
     } catch {
-      return empty
+      return readReservations(null)
     }
   }
 
   save(s: Lists) {
     if (!this.file) return
-    const data: SavedReservations = {
-      desks: s.desks.map((c) => ({ deskId: c.deskId, owner: c.owner })),
-      bookings: s.bookings.map((b) => ({ id: b.id, zone: b.zone, by: b.by, start: b.start, until: b.until })),
-    }
     try {
-      writeFileSync(`${this.file}.tmp`, JSON.stringify(data))
+      writeFileSync(`${this.file}.tmp`, JSON.stringify(snapshot(s)))
       renameSync(`${this.file}.tmp`, this.file)
     } catch (e) {
       console.warn('Reservations could not be saved', e)
     }
   }
 
-  restore(s: Lists, now: number) {
-    const saved = this.load()
-    for (const c of saved.desks) claimDesk(s, c.deskId, c.owner)
+  // Puts saved claims and bookings back. `saved` comes from Supabase when there is one, otherwise from the file.
+  restore(s: Lists, now: number, saved: SavedReservations = this.load()) {
+    for (const c of saved.desks) claimDesk(s, c.deskId, c.owner, c.member)
     for (const b of saved.bookings) {
       if (b.until <= now) continue
       const booking = new Booking()

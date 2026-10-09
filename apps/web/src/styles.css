@@ -1758,11 +1758,16 @@ body:has(.meditation:not([hidden])) .call.quiet {
   }
 }
 
-/* Board pill, next to the timer */
-.notes-pill {
+/* Board and tasks pills, next to the timer */
+.side-pills {
   position: absolute;
   top: calc(max(16px, env(safe-area-inset-top)) + 68px);
   left: calc(max(14px, env(safe-area-inset-left)) + 118px);
+  display: flex;
+  gap: 8px;
+}
+
+.notes-pill {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1775,8 +1780,12 @@ body:has(.meditation:not([hidden])) .call.quiet {
   cursor: pointer;
 }
 
-.pomo-pill:not(.idle) ~ .notes-pill {
+.pomo-pill:not(.idle) ~ .side-pills {
   left: calc(max(14px, env(safe-area-inset-left)) + 150px);
+}
+
+.notes-pill {
+  color: inherit;
 }
 
 .notes-pill:hover {
@@ -3443,6 +3452,512 @@ body:has(.meditation:not([hidden])) .call.quiet {
   left: 16px;
 }
 
+/* Alarm: set under the shared timer, and rung like an incoming call */
+.pomo-alarm {
+  margin-top: 12px;
+  padding-top: 10px;
+  text-align: left;
+  border-top: 1px solid rgba(216, 178, 94, 0.18);
+}
+
+.pomo-alarm .pomo-custom-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.pomo-alarm .pomo-custom-label svg {
+  width: 13px;
+  height: 13px;
+}
+
+.pomo-alarm form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.pomo-alarm form input {
+  min-width: 0;
+  padding: 6px 9px;
+  font: inherit;
+  color: inherit;
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+  border-radius: 3px;
+  outline: none;
+  color-scheme: dark;
+}
+
+.pomo-alarm form input[type='time'] {
+  grid-column: 1 / -1;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.pomo-alarm form input:focus {
+  border-color: var(--cream);
+}
+
+.pomo-alarm .icon-btn:disabled {
+  color: #7f8aa0;
+  background: var(--well);
+  border-color: var(--gold-deep);
+  cursor: default;
+}
+
+.pomo-alarm-set {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pomo-alarm-set > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.pomo-alarm-set b {
+  display: block;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pomo-alarm-set span {
+  display: block;
+  font-size: 12px;
+  color: #b9c2d2;
+  overflow-wrap: anywhere;
+}
+
+.pomo-pill em {
+  display: grid;
+  color: var(--gold);
+}
+
+.pomo-pill em svg {
+  width: 13px;
+  height: 13px;
+}
+
+.ring.alarm {
+  box-shadow: 0 0 0 2px var(--gold), 0 0 0 3px var(--teal-ink);
+}
+
+/* To-do list: your own tasks, in a panel over the world */
+.tasks-scrim {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(8, 13, 22, 0.6);
+  z-index: 35;
+}
+
+.tasks {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(480px, 100%);
+  max-height: min(720px, 100%);
+  padding: 18px 20px 16px;
+  background: var(--panel);
+  border-radius: 3px;
+  box-shadow: var(--edge);
+}
+
+.tasks-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font: 700 13px var(--display);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.tasks-head em {
+  margin-left: auto;
+  font: 600 12px var(--ui);
+  font-style: normal;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #9aa6ba;
+}
+
+.tasks-head .icon-btn {
+  align-self: center;
+  float: none;
+}
+
+.tasks-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.tasks-add input,
+.task-edit {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 13px;
+  font: inherit;
+  color: inherit;
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+  border-radius: 2px;
+  outline: none;
+}
+
+.tasks-add input:focus,
+.task-edit:focus {
+  border-color: var(--cream);
+}
+
+.tasks-add input::placeholder {
+  color: #7f8aa0;
+}
+
+.tasks-add .icon-btn:disabled {
+  color: #7f8aa0;
+  background: var(--well);
+  border-color: var(--gold-deep);
+  cursor: default;
+}
+
+.tasks-body {
+  flex: 1;
+  min-height: 120px;
+  margin: 10px -6px 0;
+  padding: 0 6px;
+  overflow-y: auto;
+}
+
+.tasks-body ul,
+.tasks-view {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tasks-body > ul:first-of-type {
+  min-height: 8px;
+  padding-bottom: 6px;
+}
+
+.tasks-empty {
+  margin: 0;
+  padding: 22px 0;
+  text-align: center;
+  color: #7f8aa0;
+}
+
+.task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 4px 4px 4px 0;
+  border-top: 2px solid transparent;
+  border-bottom: 1px solid rgba(216, 178, 94, 0.12);
+}
+
+/* Where a dragged task would land. */
+.task.over {
+  border-top-color: var(--gold);
+}
+
+.task.carried {
+  opacity: 0.4;
+}
+
+.task-grip {
+  flex: none;
+  display: grid;
+  width: 14px;
+  color: #56617a;
+  cursor: grab;
+}
+
+.task-grip svg {
+  width: 14px;
+  height: 14px;
+}
+
+.task-box {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  color: var(--teal-ink);
+  background: none;
+  border: 2px solid var(--gold-deep);
+  border-radius: 3px;
+}
+
+button.task-box {
+  cursor: pointer;
+}
+
+button.task-box:hover {
+  border-color: var(--gold);
+}
+
+.task.done .task-box {
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
+.task-box svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 3;
+}
+
+.task-title {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  cursor: text;
+}
+
+.task.done .task-title {
+  color: #7f8aa0;
+  text-decoration: line-through;
+  cursor: default;
+}
+
+.task-tool {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: #7f8aa0;
+  background: none;
+  border: 0;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.task-tool:hover {
+  color: var(--cream);
+  background: var(--well);
+}
+
+.task-tool svg {
+  width: 15px;
+  height: 15px;
+}
+
+.tasks-done-head {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.tasks-done-head button,
+.profile-open {
+  padding: 5px 2px;
+  font: 700 12px var(--ui);
+  color: var(--gold);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.tasks-done-head button:hover,
+.profile-open:hover {
+  color: var(--cream);
+}
+
+.profile-open {
+  margin-top: 8px;
+  text-decoration: underline;
+}
+
+.tasks-finish {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px;
+  font: 700 12px var(--display);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #0e1726;
+  background: var(--gold);
+  border: 0;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.tasks-finish:hover:not(:disabled) {
+  background: #e8c777;
+}
+
+.tasks-finish:disabled {
+  color: #8d8672;
+  background: #2a3244;
+  cursor: default;
+}
+
+.tasks-finish svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2.6;
+}
+
+.confirm button.on {
+  color: var(--teal-ink);
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
+.tasks-share {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(216, 178, 94, 0.18);
+  cursor: pointer;
+}
+
+.tasks-share input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: var(--gold);
+}
+
+.tasks-share span {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #9aa6ba;
+}
+
+.tasks-share b {
+  display: block;
+  font-size: 13px;
+  color: var(--cream);
+}
+
+.tasks-note {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #9aa6ba;
+}
+
+/* Someone's list as others see it, and the log of visits on a profile. */
+.tasks-view .task {
+  min-height: 32px;
+}
+
+.task-sessions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task-sessions li {
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(216, 178, 94, 0.12);
+}
+
+.task-sessions li > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.task-sessions span {
+  font-size: 12px;
+  color: #9aa6ba;
+}
+
+.task-sessions em {
+  margin-left: auto;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  color: var(--gold);
+}
+
+.task-sessions p {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #b9c2d2;
+  overflow-wrap: anywhere;
+}
+
+/* A question before something is thrown away. */
+.confirm-scrim {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(8, 13, 22, 0.72);
+  border-radius: 3px;
+  z-index: 5;
+}
+
+.confirm {
+  width: min(340px, 100%);
+  padding: 18px;
+  background: var(--panel);
+  border-radius: 3px;
+  box-shadow: var(--edge);
+}
+
+.confirm b {
+  font-size: 15px;
+}
+
+.confirm p {
+  margin: 6px 0 16px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #b9c2d2;
+  overflow-wrap: anywhere;
+}
+
+.confirm > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.confirm button {
+  padding: 7px 16px;
+  font: 700 13px var(--ui);
+  color: var(--cream);
+  background: none;
+  border: 1px solid var(--gold-deep);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.confirm button.danger {
+  color: #fff;
+  background: var(--red);
+  border-color: var(--red);
+}
+
 /* Panels keep out of each other's way: an open jukebox stops above the map, and the roster and
    timer stop above the chat, which shrinks to a couple of lines while either is open. */
 .jukebox.open {
@@ -3551,7 +4066,7 @@ body:has(.pomo) .chat-people {
 }
 
 @media (pointer: coarse) {
-  .notes-pill {
+  .side-pills {
     top: calc(max(16px, env(safe-area-inset-top)) + 144px);
   }
 }

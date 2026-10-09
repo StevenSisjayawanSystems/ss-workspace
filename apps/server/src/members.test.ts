@@ -45,9 +45,9 @@ describe('people in the room', () => {
   })
   const join = async (name: string, more: Record<string, unknown> = {}) => {
     const room = await new Client(`ws://localhost:${PORT}`).joinOrCreate<any>('office', { name, ...more })
-    const got: Record<string, any[]> = { me: [], progress: [], chat: [], mention: [], bonds: [], friend: [] }
+    const got: Record<string, any[]> = { me: [], progress: [], chat: [], mention: [], bonds: [], friend: [], tasks: [], 'tasks:of': [], notice: [], alarm: [], 'alarm:ring': [] }
     for (const type of Object.keys(got)) room.onMessage(type, (m: any) => got[type].push(m))
-    for (const type of ['snap', 'ice', 'emote', 'notice', 'people', 'chat:history']) room.onMessage(type, () => {})
+    for (const type of ['snap', 'ice', 'emote', 'people', 'chat:history']) room.onMessage(type, () => {})
     return { room, got }
   }
 
@@ -146,5 +146,73 @@ describe('people in the room', () => {
     await wait(200)
     expect(c.room.state.notes.length).toBe(0)
     await Promise.all([a.room.leave(), b.room.leave(), c.room.leave()])
+  })
+
+  it('keeps a to-do list each, private until shared, and grows the plant when a task is finished', async () => {
+    const a = await join('Tess')
+    const b = await join('Uma')
+    await wait(150)
+    const key = (who: typeof a) => who.got.me[0].member as string
+    const mine = () => a.got.tasks.at(-1)
+    const seen = () => b.got['tasks:of'].at(-1)
+    expect(mine()).toMatchObject({ list: [], shared: false, bonusLeft: 8 })
+
+    a.room.send('task:add', 'Write the brief')
+    a.room.send('task:add', '  Review PR  ')
+    await wait(200)
+    expect(mine().list.map((t: any) => t.title)).toEqual(['Review PR', 'Write the brief'])
+    const [review, brief] = mine().list
+
+    // Nobody else can read it, or change it, until it is shared.
+    b.room.send('tasks:watch', key(a))
+    b.room.send('task:done', { id: brief.id, done: true })
+    await wait(200)
+    expect(seen()).toMatchObject({ of: key(a), shared: false, list: [] })
+    expect(mine().list.every((t: any) => !t.done)).toBe(true)
+    a.room.send('task:share', true)
+    await wait(200)
+    expect(seen().list.map((t: any) => t.title)).toEqual(['Review PR', 'Write the brief'])
+
+    // Finishing a task helps the plant, once: unticking and ticking again earns nothing more.
+    a.room.send('task:done', { id: brief.id, done: true })
+    await wait(200)
+    expect(mine()).toMatchObject({ bonusLeft: 7 })
+    expect(a.got.notice.at(-1)).toMatchObject({ title: 'Task done' })
+    expect(seen().list.find((t: any) => t.id === brief.id).done).toBe(true)
+    const bed = () => a.room.state.garden.find((p: any) => p.name === 'Tess')
+    expect(bed().seconds).toBe(900)
+    a.room.send('task:done', { id: brief.id, done: false })
+    a.room.send('task:done', { id: brief.id, done: true })
+    a.room.send('task:edit', { id: review.id, title: 'Review the PR' })
+    a.room.send('task:move', { id: brief.id, before: review.id })
+    await wait(200)
+    expect(bed().seconds).toBe(900)
+    expect(mine().list.map((t: any) => t.title)).toEqual(['Write the brief', 'Review the PR'])
+
+    // Closing the session is deliberate: the finished task is logged and cleared, the other stays.
+    b.room.send('task:finish')
+    a.room.send('task:finish')
+    await wait(200)
+    expect(mine().list.map((t: any) => t.title)).toEqual(['Review the PR'])
+    expect(seen().sessions).toMatchObject([{ done: 1, total: 2, titles: ['Write the brief'] }])
+    expect(a.got.notice.at(-1)).toMatchObject({ title: 'Session logged' })
+    a.room.send('task:remove', review.id)
+    await wait(200)
+    expect(mine().list).toEqual([])
+
+    // An alarm rings for its owner alone, once, and can be called off.
+    a.room.send('alarm:set', { at: Date.now() + 900, label: '  Stand up  ' })
+    a.room.send('alarm:set', { at: Date.now() - 5, label: 'in the past' })
+    await wait(200)
+    expect(a.got.alarm.at(-1)).toMatchObject({ label: 'Stand up' })
+    await wait(1900)
+    expect(a.got['alarm:ring']).toMatchObject([{ label: 'Stand up', missed: false }])
+    expect(b.got['alarm:ring']).toHaveLength(0)
+    expect(a.got.alarm.at(-1)).toEqual({ at: 0, label: '' })
+    a.room.send('alarm:set', { at: Date.now() + 60000, label: '' })
+    a.room.send('alarm:clear')
+    await wait(200)
+    expect(a.got.alarm.at(-1)).toEqual({ at: 0, label: '' })
+    await Promise.all([a.room.leave(), b.room.leave()])
   })
 })

@@ -1,11 +1,12 @@
 import { Room, ServerError, type Client } from 'colyseus'
 import { schema, t, type SchemaType } from '@colyseus/schema'
-import { MAX_COMMENTS, MAX_COMMENT_LENGTH, MAX_NOTES, MAX_NOTE_LENGTH, NEW_BOND, NOTE_COLORS, QUIET_ZONES, ROOMS, SIT_REACH, SPAWN, isBoard, mentionsIn, nearestWalkable, onBoard, pairKey, parseYouTubeId, seatById, standSpot, zoneAt, type Bond, type Person, type ZoneId } from '@guildhouse/shared'
+import { BEDS, TASK_BONUS_PER_DAY, TASK_BONUS_SECONDS, MAX_COMMENTS, MAX_COMMENT_LENGTH, MAX_NOTES, MAX_NOTE_LENGTH, NEW_BOND, NOTE_COLORS, QUIET_ZONES, ROOMS, SIT_REACH, SPAWN, isBoard, mentionsIn, nearestWalkable, onBoard, pairKey, parseYouTubeId, seatById, standSpot, zoneAt, type Bond, type Person, type ZoneId } from '@guildhouse/shared'
 import { config, inviteAccepted } from '../config'
 import { db, type ChatLine } from '../db'
 import { Note, NoteStore, fromNote, toComment, toNote } from '../notes'
 import { iceServers } from '../ice'
-import { accrue, cleanOffset, cleanProgress, count, guestKey, newMember, standingOf, type Member } from '../members'
+import { accrue, cleanOffset, cleanProgress, count, guestKey, localDay, newMember, standingOf, type Member } from '../members'
+import { addTask, clearDone, editTask, finishSession, moveTask, removeTask, tickTask, type KeptTask } from '../tasks'
 import * as garden from '../garden'
 import * as juke from '../jukebox'
 import * as pomo from '../pomodoro'
@@ -60,6 +61,8 @@ export const LOGIN_REJECTED = 4402
 
 // How often each person is told their own progress, and how often it is written down.
 const PUSH_MS = 5000
+// An alarm is for a time of day, so it can be at most a day ahead.
+const ALARM_HORIZON_MS = 24 * 60 * 60 * 1000
 const SAVE_MS = 30000
 
 const EMOTES = new Set(['wave', 'heart', 'laugh', 'cheer'])
@@ -76,6 +79,8 @@ export class OfficeRoom extends Room {
   private gardenStore = new garden.GardenStore(config.dataDir)
   private lastTend = Date.now()
   private lastGardenSave = 0
+  // Beds from the old garden file that no account has taken up yet, by the name on them.
+  private unclaimedBeds = new Map<string, number>()
   private unplanted = 0
   private adds: Promise<void> = Promise.resolve()
   // Everyone here now, by member key and by session; and every account that has ever joined.
@@ -85,6 +90,8 @@ export class OfficeRoom extends Room {
   // What each pair of people has done together, by pair key; and the pairs changed since the last save.
   private bonds = new Map<string, Bond>()
   private bondsChanged = new Set<string>()
+  // Whose task list each session has open, so changes reach them as they happen.
+  private watching = new Map<string, string>()
   // Reads and writes of member rows happen one at a time, so a quick leave-and-return cannot read a stale row.
   private writes: Promise<void> = Promise.resolve()
   private lastCredit = Date.now()
@@ -205,21 +212,27 @@ export class OfficeRoom extends Room {
       this.clients.find((c) => c.sessionId === msg.to)?.send('rtc', { from: client.sessionId, data: msg.data })
     })
 
-    // Focus garden
-    for (const saved of this.gardenStore.load()) {
+    // Focus garden. With accounts the beds come from the members themselves; beds from the old
+    // file are held aside and handed to their owners by name the next time each one walks in.
+    const filed = this.gardenStore.load()
+    if (db) for (const bed of filed) this.unclaimedBeds.set(bed.name, bed.seconds)
+    for (const saved of db ? await db.garden(BEDS.length) : filed.map((bed) => ({ ...bed, member: '' }))) {
       const plot = new garden.Plot()
       plot.name = saved.name
+      plot.member = saved.member
       plot.seconds = saved.seconds
       this.state.garden.push(plot)
     }
 
     // Desks and meeting rooms
-    this.reservations.restore(this.state, Date.now())
+    const kept = db ? await db.kept('reservations') : null
+    this.reservations.restore(this.state, Date.now(), kept ? res.readReservations(kept) : undefined)
     const tell = (client: Client, problem: string | null, detail: string) => problem && client.send('notice', { title: problem, detail })
     this.onMessage('desk:claim', (client: Client, deskId: unknown) => {
       const p = this.state.players.get(client.sessionId)
       if (!p) return
-      tell(client, res.claimDesk(this.state, deskId, p.name), 'Choose a free desk')
+      const me = this.bySession.get(client.sessionId)
+      tell(client, res.claimDesk(this.state, deskId, p.name, me?.account ? me.key : ''), 'Choose a free desk')
       this.saveReservations()
     })
     this.onMessage('desk:release', (client: Client) => {
@@ -313,14 +326,77 @@ export class OfficeRoom extends Room {
     })
     this.onMessage('note:remove', (_c: Client, id: unknown) => typeof id === 'string' && this.removeNote(id))
 
+    // A personal alarm: it rings for its owner alone, at a moment within the next day.
+    this.onMessage('alarm:set', (client: Client, m: { at?: unknown; label?: unknown }) => {
+      const me = this.bySession.get(client.sessionId)
+      const now = Date.now()
+      if (!me || typeof m?.at !== 'number' || !(m.at > now && m.at <= now + ALARM_HORIZON_MS)) return
+      me.alarmAt = Math.round(m.at)
+      me.alarmLabel = cleanText(m.label, 60)
+      me.dirty = true
+      this.tell(me.key, 'alarm', { at: me.alarmAt, label: me.alarmLabel })
+    })
+    this.onMessage('alarm:clear', (client: Client) => {
+      const me = this.bySession.get(client.sessionId)
+      if (me?.alarmAt) this.endAlarm(me)
+    })
+
+    // To-do lists. Every change is made by the list's owner; anyone else can only look, and only if it is shared.
+    const mine = (client: Client, change: (me: Member) => unknown) => {
+      const me = this.bySession.get(client.sessionId)
+      if (me && change(me)) this.tasksChanged(me)
+    }
+    this.onMessage('task:add', (client: Client, title: unknown) => mine(client, (me) => addTask(me.tasks, title, Date.now())))
+    this.onMessage('task:edit', (client: Client, m: { id?: unknown; title?: unknown }) => mine(client, (me) => editTask(me.tasks, m?.id, m?.title)))
+    this.onMessage('task:remove', (client: Client, id: unknown) => mine(client, (me) => removeTask(me.tasks, id)))
+    this.onMessage('task:move', (client: Client, m: { id?: unknown; before?: unknown }) => mine(client, (me) => moveTask(me.tasks, m?.id, m?.before)))
+    this.onMessage('task:clear', (client: Client) => mine(client, (me) => clearDone(me.tasks)))
+    this.onMessage('task:share', (client: Client, shared: unknown) =>
+      mine(client, (me) => {
+        me.tasksShared = shared === true
+        return (me.dirty = true)
+      }),
+    )
+    this.onMessage('task:done', (client: Client, m: { id?: unknown; done?: unknown }) =>
+      mine(client, (me) => {
+        const now = Date.now()
+        const task = tickTask(me.tasks, m?.id, m?.done === true, now)
+        if (!task) return false
+        if (task.done) this.reward(me, task, now)
+        return true
+      }),
+    )
+    // "I'm done with this session": nothing is logged or cleared until its owner says so.
+    this.onMessage('task:finish', (client: Client) =>
+      mine(client, (me) => {
+        const session = finishSession(me.tasks, Date.now())
+        if (!session) return false
+        const kept = { ...session, shared: me.tasksShared }
+        me.log.unshift(kept)
+        if (db && me.account) this.writes = this.writes.then(() => db!.addTaskSession(me.key, kept)).catch(warn)
+        this.tell(me.key, 'notice', { title: 'Session logged', detail: `${session.done} ${session.done === 1 ? 'task' : 'tasks'} done, on your profile` })
+        return true
+      }),
+    )
+    // Opening someone's list (or closing it, with nothing): they are sent it now and whenever it changes.
+    this.onMessage('tasks:watch', (client: Client, key: unknown) => {
+      if (typeof key !== 'string' || !key) return void this.watching.delete(client.sessionId)
+      this.watching.set(client.sessionId, key)
+      const view = this.tasksView(key, this.bySession.get(client.sessionId)?.key ?? '')
+      if (view) client.send('tasks:of', view)
+    })
+
     // Changing your own name, look or introduction. It applies to every tab you have open.
     this.onMessage('profile:set', (client: Client, m: Record<string, unknown>) => {
       const me = this.bySession.get(client.sessionId)
       const mine = this.state.players.get(client.sessionId)
       if (!me || !mine || !m) return
       const card = { name: cleanText(m.name, 20) || me.name, robe: cleanColor(m.robe, mine.robe), trim: cleanColor(m.trim, mine.trim), hair: cleanColor(m.hair, mine.hair), hat: m.hat !== false, about: cleanText(m.about, 160) }
+      if (res.renamed(this.state, me.account ? me.key : '', me.name, card.name)) this.saveReservations()
       me.name = card.name
       me.about = card.about
+      const bed = me.account && garden.plotOf(this.state.garden, gardener(me))
+      if (bed) bed.name = card.name
       this.state.players.forEach((p) => p.member === me.key && Object.assign(p, card))
       if (!db || !me.account) return
       this.people.set(me.key, { id: me.key, name: card.name })
@@ -455,6 +531,64 @@ export class OfficeRoom extends Room {
     if (sessions) for (const c of this.clients) if (sessions.has(c.sessionId)) c.send(type, message)
   }
 
+  private endAlarm(m: Member) {
+    m.alarmAt = 0
+    m.alarmLabel = ''
+    m.dirty = true
+    this.tell(m.key, 'alarm', { at: 0, label: '' })
+  }
+
+  // A finished task helps the plant its owner is growing, once per task and a few times a day.
+  private reward(me: Member, task: KeptTask, now: number) {
+    if (task.rewarded) return
+    const today = localDay(now, me.tzOffset)
+    if (me.bonusDay !== today) {
+      me.bonusDay = today
+      me.bonusCount = 0
+    }
+    if (me.bonusCount >= TASK_BONUS_PER_DAY) return
+    task.rewarded = true
+    me.bonusCount++
+    me.focusSeconds += TASK_BONUS_SECONDS
+    me.dirty = true
+    garden.credit(this.state.garden, [gardener(me)], TASK_BONUS_SECONDS)
+    if (!db) this.gardenStore.save(this.state.garden)
+    this.tell(me.key, 'notice', { title: 'Task done', detail: `Your plant grew by ${TASK_BONUS_SECONDS / 60} minutes` })
+  }
+
+  // How many more tasks can help their plant today.
+  private bonusLeft(me: Member) {
+    return me.bonusDay === localDay(Date.now(), me.tzOffset) ? Math.max(0, TASK_BONUS_PER_DAY - me.bonusCount) : TASK_BONUS_PER_DAY
+  }
+
+  // Someone's list as `viewer` may see it: all of it if it is theirs or shared, otherwise only that it exists.
+  private tasksView(key: string, viewer: string) {
+    const owner = this.members.get(key)
+    if (!owner) return null
+    const own = viewer === key
+    const open = own || owner.tasksShared
+    return {
+      of: key,
+      shared: owner.tasksShared,
+      list: open ? owner.tasks.map(({ rewarded: _, ...task }) => task) : [],
+      sessions: owner.log.map(({ shared, ...s }) => (own || shared ? s : { ...s, titles: [] })),
+    }
+  }
+
+  // After any change to a list: write it down, and tell its owner and anyone looking at it.
+  private tasksChanged(me: Member) {
+    if (db && me.account) {
+      const list = me.tasks.map((t) => ({ ...t }))
+      this.writes = this.writes.then(() => db!.putTasks(me.key, list)).catch(warn)
+    }
+    this.tell(me.key, 'tasks', { list: me.tasks.map(({ rewarded: _, ...task }) => task), shared: me.tasksShared, bonusLeft: this.bonusLeft(me) })
+    for (const c of this.clients) {
+      if (this.watching.get(c.sessionId) !== me.key) continue
+      const view = this.tasksView(me.key, this.bySession.get(c.sessionId)?.key ?? '')
+      if (view) c.send('tasks:of', view)
+    }
+  }
+
   // Tells someone they were named on the board, which also counts between the two of them.
   private named(by: Member, key: string, name: string, where: string) {
     this.bond(by.key, key).messages++
@@ -511,6 +645,11 @@ export class OfficeRoom extends Room {
       if (seat && !QUIET_ZONES.includes(seat.zone)) inCall.add(p.member)
     })
     for (const m of this.members.values()) accrue(m, elapsed, inCall.has(m.key), now)
+    for (const m of this.members.values()) {
+      if (!m.alarmAt || m.alarmAt > now) continue
+      this.tell(m.key, 'alarm:ring', { at: m.alarmAt, label: m.alarmLabel, missed: false })
+      this.endAlarm(m)
+    }
     // Time together: people seated in the same call, and everyone here during a shared focus session.
     const together = (keys: string[], what: 'callSeconds' | 'focusSeconds') => {
       for (let i = 0; i < keys.length; i++) for (let j = i + 1; j < keys.length; j++) this.bond(keys[i], keys[j])[what] += elapsed
@@ -537,7 +676,7 @@ export class OfficeRoom extends Room {
   }
 
   private saveMembers(members: Member[]) {
-    const rows = members.filter((m) => m.account && m.dirty).map((m) => ({ id: m.key, name: m.name, progress: m.progress }))
+    const rows = members.filter((m) => m.account && m.dirty).map((m) => ({ id: m.key, name: m.name, progress: m.progress, focusSeconds: m.focusSeconds, tasksShared: m.tasksShared, bonusDay: m.bonusDay, bonusCount: m.bonusCount, alarmAt: m.alarmAt, alarmLabel: m.alarmLabel }))
     for (const m of members) m.dirty = false
     if (!db) return
     if (rows.length) this.writes = this.writes.then(() => db!.saveMembers(rows, Date.now())).catch(warn)
@@ -574,11 +713,14 @@ export class OfficeRoom extends Room {
     this.lastTend = now
     if (timer.phase === 'focus' && !timer.paused) this.unplanted += elapsed
     if (this.unplanted >= 10 || (this.unplanted > 0 && timer.phase !== 'focus')) {
-      const present: string[] = []
-      this.state.players.forEach((p) => present.push(p.name))
-      garden.credit(this.state.garden, present, this.unplanted)
+      // The time goes on the member, where it is kept for good, and into their bed if they have one.
+      for (const m of this.members.values()) {
+        m.focusSeconds += this.unplanted
+        m.dirty = true
+      }
+      garden.credit(this.state.garden, [...this.members.values()].map(gardener), this.unplanted)
       this.unplanted = 0
-      if (now - this.lastGardenSave > 60_000 || timer.phase !== 'focus') {
+      if (!db && (now - this.lastGardenSave > 60_000 || timer.phase !== 'focus')) {
         this.lastGardenSave = now
         this.gardenStore.save(this.state.garden)
       }
@@ -586,13 +728,14 @@ export class OfficeRoom extends Room {
   }
 
   async onDispose() {
-    this.gardenStore.save(this.state.garden)
+    if (!db) this.gardenStore.save(this.state.garden)
     this.saveMembers([...this.members.values()])
     await this.writes
   }
 
   private saveReservations() {
-    this.reservations.save(this.state)
+    if (db) void db.keep('reservations', res.snapshot(this.state)).catch(warn)
+    else this.reservations.save(this.state)
   }
 
   // The door: with INVITE_CODE set, nobody gets in without it; with accounts, nobody gets in unsigned.
@@ -611,8 +754,16 @@ export class OfficeRoom extends Room {
     if (account && !this.members.has(key)) {
       await this.writes
       const saved = await db!.member(account)
+      const [tasks, log] = saved ? await Promise.all([db!.tasks(account), db!.taskSessions(account, 30)]) : [[], []]
       // Another tab of theirs may have finished joining while we were reading.
-      if (!this.members.has(key)) this.members.set(key, newMember(key, true, name, saved?.progress ?? cleanProgress(options.carry), saved?.seenAt, saved?.since, saved?.about))
+      if (!this.members.has(key)) {
+        const joining = newMember(key, true, name, saved?.progress ?? cleanProgress(options.carry), saved?.seenAt, saved?.since, saved?.about)
+        // A bed grown before there were accounts is theirs if it carries their name.
+        joining.focusSeconds = saved?.focusSeconds || this.unclaimedBeds.get(name) || 0
+        this.unclaimedBeds.delete(name)
+        Object.assign(joining, { tasks, log, tasksShared: saved?.tasksShared ?? false, bonusDay: saved?.bonusDay ?? '', bonusCount: saved?.bonusCount ?? 0, alarmAt: saved?.alarmAt ?? 0, alarmLabel: saved?.alarmLabel ?? '' })
+        this.members.set(key, joining)
+      }
     }
     let member = this.members.get(key)
     if (!member) this.members.set(key, (member = newMember(key, false, name, cleanProgress(options.carry))))
@@ -621,6 +772,15 @@ export class OfficeRoom extends Room {
     if (member.name !== name) member.dirty = true
     member.name = name
     this.bySession.set(sessionId, member)
+    // Their bed shows what they have grown and carries the name they go by now.
+    if (member.account && member.focusSeconds > 0) garden.credit(this.state.garden, [gardener(member)], 0)
+    const bed = garden.plotOf(this.state.garden, gardener(member))
+    if (bed && member.account) {
+      bed.seconds = member.focusSeconds
+      bed.name = name
+    }
+    // Likewise their desk.
+    if (member.account && res.renamed(this.state, member.key, name, name)) this.saveReservations()
     return member
   }
 
@@ -654,6 +814,12 @@ export class OfficeRoom extends Room {
     client.send('me', { member: member.key, account: member.account, seenAt: member.seenAt })
     client.send('progress', member.progress)
     client.send('bonds', this.bondsOf(member.key))
+    // An alarm that came due while they were away is not rung late; they are simply told.
+    if (member.alarmAt && member.alarmAt <= Date.now()) {
+      client.send('alarm:ring', { at: member.alarmAt, label: member.alarmLabel, missed: true })
+      this.endAlarm(member)
+    } else client.send('alarm', { at: member.alarmAt, label: member.alarmLabel })
+    client.send('tasks', { list: member.tasks.map(({ rewarded: _, ...task }) => task), shared: member.tasksShared, bonusLeft: this.bonusLeft(member) })
     // Call setup servers, including relay credentials, go only to people who are in.
     void iceServers().then((servers) => client.send('ice', servers))
     if (!db || !member.account) return
@@ -673,6 +839,7 @@ export class OfficeRoom extends Room {
     this.lastChat.delete(client.sessionId)
     this.lastRing.delete(client.sessionId)
     this.lastKnock.delete(client.sessionId)
+    this.watching.delete(client.sessionId)
     const member = this.bySession.get(client.sessionId)
     this.bySession.delete(client.sessionId)
     if (!member) return
@@ -683,5 +850,7 @@ export class OfficeRoom extends Room {
     this.saveMembers([member])
   }
 }
+
+const gardener = (m: Member): garden.Gardener => ({ member: m.account ? m.key : '', name: m.name })
 
 const warn = (e: unknown) => console.warn(e instanceof Error ? e.message : e)

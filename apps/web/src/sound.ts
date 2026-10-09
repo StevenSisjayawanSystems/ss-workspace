@@ -60,3 +60,18 @@ export function pat() {
   tone(190, 0, 0.07, 0.2)
   tone(120, 0.03, 0.09, 0.16)
 }
+
+// An alarm clock: two bright notes, over and over, until it is silenced.
+let alarmTimer: ReturnType<typeof setInterval> | undefined
+const alarmOnce = () => [0, 0.16, 0.5, 0.66].forEach((at, i) => tone(i % 2 ? 1568 : 1319, at, 0.14, 0.12))
+export const alarmBell = {
+  start() {
+    alarmBell.stop()
+    alarmOnce()
+    alarmTimer = setInterval(alarmOnce, 1400)
+  },
+  stop() {
+    clearInterval(alarmTimer)
+    alarmTimer = undefined
+  },
+}

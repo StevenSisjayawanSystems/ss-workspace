@@ -9,6 +9,8 @@ import {
   DeskClaim,
   KNOCK,
   ReservationStore,
+  readReservations,
+  snapshot,
   admit,
   bookRoom,
   cancelBooking,
@@ -18,6 +20,7 @@ import {
   expire,
   openDoor,
   releaseDesk,
+  renamed,
   reopenEmpty,
   seatRefusal,
 } from './reservations'
@@ -119,5 +122,21 @@ describe('room schedule', () => {
     expect(cancelBooking(again, again.bookings[0].id, 'Ben')).toBe(false)
     expect(cancelBooking(again, again.bookings[0].id, 'Ada')).toBe(true)
     rmSync(dir, { recursive: true, force: true })
+  })
+})
+
+describe('a desk belongs to an account', () => {
+  it('follows its owner through a change of name and comes back from what was saved', () => {
+    const s = { desks: [] as DeskClaim[], bookings: [] as Booking[], doors: [] as ClosedDoor[] }
+    const [first, second] = DESKS
+    expect(claimDesk(s, first.id, 'Ada', 'm1')).toBeNull()
+    expect(claimDesk(s, second.id, 'Bo')).toBeNull()
+    // The account's desk takes the new name; nobody else's is touched.
+    expect(renamed(s, 'm1', 'Ada', 'Countess')).toBe(true)
+    expect(s.desks.map((c) => [c.deskId, c.owner, c.member])).toEqual([[first.id, 'Countess', 'm1'], [second.id, 'Bo', '']])
+    expect(renamed(s, 'm1', 'Countess', 'Countess')).toBe(false)
+    const again = { desks: [] as DeskClaim[], bookings: [] as Booking[], doors: [] as ClosedDoor[] }
+    new ReservationStore(undefined).restore(again, 0, readReservations(JSON.parse(JSON.stringify(snapshot(s)))))
+    expect(again.desks.map((c) => [c.deskId, c.owner, c.member])).toEqual([[first.id, 'Countess', 'm1'], [second.id, 'Bo', '']])
   })
 })

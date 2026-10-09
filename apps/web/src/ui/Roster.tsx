@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { BADGES, PLANT_SECONDS, QUIET_ZONES, bedOf, formatDuration, levelOf, roomById, seatById, titleOf, xpOf, type ZoneId } from '@guildhouse/shared'
 import { signOut, useAccount } from '../account'
 import { useGame } from '../game'
-import { joinCallIn, remotes, ringPerson, serverNow, setStatus, useNet } from '../net/net'
+import { bedFor, joinCallIn, remotes, ringPerson, seedOf, serverNow, setStatus, useNet } from '../net/net'
 import { LEVELS_EXPLAINED } from './Profile'
 import { useStats } from '../stats'
 import { Icon } from './icons'
@@ -83,8 +83,9 @@ export function Roster({ onClose }: { onClose: () => void }) {
   const progress = useStats((s) => s.progress)
   const email = useAccount((s) => s.email)
   const myStatus = useGame((s) => s.status)
-  const myFocus = useNet((s) => s.garden.find((p) => p.name === profile?.name)?.seconds ?? 0)
-  const bed = bedOf(profile?.name ?? '', myFocus)
+  const myBed = useNet((s) => bedFor(s.garden, s.me, profile?.name ?? ''))
+  const myFocus = myBed?.seconds ?? 0
+  const bed = bedOf(seedOf(myBed, profile?.name ?? ''), myFocus)
   const [custom, setCustom] = useState('')
   // Durations and other people's rooms change without any event we subscribe to.
   const [, refresh] = useState(0)

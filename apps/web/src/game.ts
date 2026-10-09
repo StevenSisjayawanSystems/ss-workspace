@@ -58,6 +58,7 @@ interface GameState {
   // Whose profile card is open (a session id, or 'self'), and whether the bulletin board is open.
   profileOf: string | null
   boardOpen: boolean
+  tasksOpen: boolean
   // The room whose schedule panel is open.
   scheduleOf: ZoneId | null
   // What you are up to, shown to others. Empty means nothing in particular.
@@ -89,6 +90,7 @@ export const useGame = create<GameState>((set, get) => ({
   jukeOpen: false,
   profileOf: null,
   boardOpen: false,
+  tasksOpen: false,
   scheduleOf: null,
   status: loadStatus(),
   setJukeOpen: (jukeOpen) => set({ jukeOpen }),

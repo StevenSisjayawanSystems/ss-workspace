@@ -1,7 +1,8 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { isBoard, pairKey, type Bond, type Person, type Progress } from '@guildhouse/shared'
+import { isBoard, pairKey, type Bond, type Person, type Progress, type TaskSession } from '@guildhouse/shared'
 import { config } from './config'
 import type { SavedComment, SavedNote } from './notes'
+import type { KeptTask } from './tasks'
 
 // What a member chooses about themselves. Anything left out of a save is left as it was.
 export interface Card {
@@ -19,7 +20,28 @@ export interface SavedMember {
   // When they first joined.
   since: number
   about: string
+  focusSeconds: number
+  tasksShared: boolean
+  bonusDay: string
+  bonusCount: number
+  alarmAt: number
+  alarmLabel: string
 }
+
+// What is written down about a member each time they are saved.
+export interface MemberRow {
+  id: string
+  name: string
+  progress: Progress
+  focusSeconds: number
+  tasksShared: boolean
+  bonusDay: string
+  bonusCount: number
+  alarmAt: number
+  alarmLabel: string
+}
+
+const KEPT = ['reservations'] as const
 
 // One line of chat as clients see it. `to` is empty for the room everyone shares.
 export interface ChatLine {
@@ -65,13 +87,19 @@ export class Db {
       seenAt: Date.parse(data.seen_at) || Date.now(),
       since: Date.parse(data.created_at) || Date.now(),
       about: data.about ?? '',
+      focusSeconds: data.focus_seconds ?? 0,
+      tasksShared: !!data.tasks_shared,
+      bonusDay: data.task_bonus_day ?? '',
+      bonusCount: data.task_bonus_count ?? 0,
+      alarmAt: data.alarm_at ? Date.parse(data.alarm_at) : 0,
+      alarmLabel: data.alarm_label ?? '',
     }
   }
 
-  async saveMembers(members: { id: string; name: string; progress: Progress }[], now: number) {
+  async saveMembers(members: MemberRow[], now: number) {
     if (!members.length) return
     const p = (m: { progress: Progress }) => m.progress
-    const rows = members.map((m) => ({ id: m.id, name: m.name, seconds: Math.round(p(m).seconds), call_seconds: Math.round(p(m).callSeconds), metres: Math.round(p(m).metres), messages: p(m).messages, songs: p(m).songs, pomodoros: p(m).pomodoros, days: p(m).days, streak: p(m).streak, last_day: p(m).lastDay, seen_at: new Date(now).toISOString() }))
+    const rows = members.map((m) => ({ id: m.id, name: m.name, seconds: Math.round(p(m).seconds), call_seconds: Math.round(p(m).callSeconds), metres: Math.round(p(m).metres), messages: p(m).messages, songs: p(m).songs, pomodoros: p(m).pomodoros, days: p(m).days, streak: p(m).streak, last_day: p(m).lastDay, focus_seconds: Math.round(m.focusSeconds), tasks_shared: m.tasksShared, task_bonus_day: m.bonusDay, task_bonus_count: m.bonusCount, alarm_at: m.alarmAt ? new Date(m.alarmAt).toISOString() : null, alarm_label: m.alarmLabel, seen_at: new Date(now).toISOString() }))
     fail('Saving progress', (await this.sb.from('members').upsert(rows)).error)
   }
 
@@ -84,6 +112,51 @@ export class Db {
     const { data, error } = await this.sb.from('members').select('id, name').order('created_at').limit(1000)
     fail('Reading the members', error)
     return (data ?? []).map((m) => ({ id: m.id, name: m.name }))
+  }
+
+  async tasks(id: string): Promise<KeptTask[]> {
+    const { data, error } = await this.sb.from('tasks').select('*').eq('member_id', id).order('position')
+    fail('Reading tasks', error)
+    return (data ?? []).map((t) => ({ id: t.id, title: t.title, done: t.done, doneAt: t.done_at ? Date.parse(t.done_at) : 0, at: Date.parse(t.created_at), rewarded: t.rewarded }))
+  }
+
+  // Makes the saved list match this one: rows that are gone from it are deleted, the rest written in order.
+  async putTasks(id: string, list: KeptTask[]) {
+    const gone = this.sb.from('tasks').delete().eq('member_id', id)
+    fail('Removing tasks', (await (list.length ? gone.not('id', 'in', `(${list.map((t) => `"${t.id}"`).join(',')})`) : gone)).error)
+    if (!list.length) return
+    const rows = list.map((t, position) => ({ id: t.id, member_id: id, title: t.title, done: t.done, done_at: t.doneAt ? new Date(t.doneAt).toISOString() : null, rewarded: t.rewarded, position, created_at: new Date(t.at).toISOString() }))
+    fail('Saving tasks', (await this.sb.from('tasks').upsert(rows)).error)
+  }
+
+  // Visits in which a member finished tasks, latest first.
+  async taskSessions(id: string, limit: number): Promise<(TaskSession & { shared: boolean })[]> {
+    const { data, error } = await this.sb.from('task_sessions').select('*').eq('member_id', id).order('ended_at', { ascending: false }).limit(limit)
+    fail('Reading task sessions', error)
+    return (data ?? []).map((s) => ({ startedAt: Date.parse(s.started_at), endedAt: Date.parse(s.ended_at), done: s.done, total: s.total, titles: s.titles ?? [], shared: s.shared }))
+  }
+
+  async addTaskSession(id: string, s: TaskSession & { shared: boolean }) {
+    const row = { member_id: id, started_at: new Date(s.startedAt).toISOString(), ended_at: new Date(s.endedAt).toISOString(), done: s.done, total: s.total, titles: s.titles, shared: s.shared }
+    fail('Saving a task session', (await this.sb.from('task_sessions').insert(row)).error)
+  }
+
+  // The Focus Garden's beds: the first members to have focused, in the order they joined.
+  async garden(beds: number): Promise<{ member: string; name: string; seconds: number }[]> {
+    const { data, error } = await this.sb.from('members').select('id, name, focus_seconds').gt('focus_seconds', 0).order('created_at').limit(beds)
+    fail('Reading the garden', error)
+    return (data ?? []).map((m) => ({ member: m.id, name: m.name, seconds: m.focus_seconds }))
+  }
+
+  // A named piece of shared state kept whole, or null if it has never been saved.
+  async kept(key: (typeof KEPT)[number]): Promise<unknown> {
+    const { data, error } = await this.sb.from('kept').select('value').eq('key', key).maybeSingle()
+    fail(`Reading ${key}`, error)
+    return data?.value ?? null
+  }
+
+  async keep(key: (typeof KEPT)[number], value: unknown) {
+    fail(`Saving ${key}`, (await this.sb.from('kept').upsert({ key, value, updated_at: new Date().toISOString() })).error)
   }
 
   async notes(): Promise<SavedNote[]> {

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { pomodoro, serverNow, useNet } from '../net/net'
+import { alarm, pomodoro, serverNow, stopAlarm, useNet } from '../net/net'
 import { Icon } from './icons'
 
 const SPLITS: [number, number][] = [
@@ -93,9 +93,84 @@ function Setup() {
   )
 }
 
+const clockTime = (at: number) => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+
+// Your own alarm, for a time of day. Unlike the timer above it, nobody else hears it.
+function AlarmSetup() {
+  const set = useNet((s) => s.alarm)
+  const [time, setTime] = useState('')
+  const [label, setLabel] = useState('')
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    const [h, m] = time.split(':').map(Number)
+    if (!Number.isInteger(h) || !Number.isInteger(m)) return
+    const at = new Date()
+    at.setHours(h, m, 0, 0)
+    // A time already gone today means that time tomorrow.
+    if (at.getTime() <= Date.now()) at.setDate(at.getDate() + 1)
+    alarm.set(at.getTime(), label.trim())
+    setLabel('')
+  }
+
+  return (
+    <div className="pomo-alarm">
+      <div className="pomo-custom-label">
+        <Icon.bell />
+        Alarm, just for you
+      </div>
+      {set.at ? (
+        <div className="pomo-alarm-set">
+          <div>
+            <b>{clockTime(alarm.localTime(set.at))}</b>
+            {set.label && <span>{set.label}</span>}
+          </div>
+          <button className="icon-btn danger" aria-label="Cancel the alarm" title="Cancel the alarm" onClick={() => alarm.clear()}>
+            <Icon.close />
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={submit}>
+          <input type="time" aria-label="Alarm time" value={time} required onChange={(e) => setTime(e.target.value)} />
+          <input aria-label="What it is for" placeholder="What for? (optional)" maxLength={60} value={label} onChange={(e) => setLabel(e.target.value)} />
+          <button className="icon-btn on" disabled={!time} aria-label="Set alarm" title="Set alarm">
+            <Icon.plus />
+          </button>
+        </form>
+      )}
+    </div>
+  )
+}
+
+// An alarm going off: it keeps ringing until it is answered, or for a minute.
+export function Alarm() {
+  const ringing = useNet((s) => s.alarmRinging)
+  if (!ringing) return null
+  return (
+    <div className="ring alarm" role="alertdialog" aria-label="Alarm">
+      <div className="ring-pulse">
+        <Icon.bell />
+      </div>
+      <div className="ring-text">
+        <b>{ringing.label || 'Alarm'}</b>
+        <span>It is {clockTime(alarm.localTime(ringing.at))}</span>
+      </div>
+      <button className="ring-btn accept" onClick={() => stopAlarm()}>
+        <Icon.check />
+        Dismiss
+      </button>
+      <button className="ring-btn" onClick={() => stopAlarm(5)}>
+        <Icon.timer />
+        5 more minutes
+      </button>
+    </div>
+  )
+}
+
 // The shared timer: one clock for everyone, so the whole guildhouse works and rests in step.
 export function Pomodoro() {
   const pomo = useNet((s) => s.pomo)
+  const alarmAt = useNet((s) => s.alarm.at)
   const online = useNet((s) => s.status === 'online')
   const [open, setOpen] = useState(false)
   const [, tick] = useState(0)
@@ -132,6 +207,11 @@ export function Pomodoro() {
           </>
         ) : (
           <span>Timer</span>
+        )}
+        {alarmAt > 0 && (
+          <em title={`Alarm at ${clockTime(alarm.localTime(alarmAt))}`}>
+            <Icon.bell />
+          </em>
         )}
       </button>
       {open && (
@@ -170,6 +250,7 @@ export function Pomodoro() {
           ) : (
             <Setup />
           )}
+          <AlarmSetup />
         </div>
       )}
     </>

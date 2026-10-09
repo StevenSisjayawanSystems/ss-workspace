@@ -5,6 +5,7 @@ import { GRID_H, GRID_W, WALK_SPEED, circleFree, route, seatById, zoneAt, type P
 import { inReach, input, player, useGame } from '../game'
 import type { AvatarLook } from '../look'
 import { requestSit, standUp, useNet } from '../net/net'
+import { useStats } from '../stats'
 import { Avatar } from './Avatar'
 import { Label } from './Label'
 import { glow } from './toon'
@@ -26,6 +27,7 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
   const walkTarget = useGame((s) => s.walkTarget)
   const snaps = useGame((s) => s.snaps)
   const status = useGame((s) => s.status)
+  const streak = useStats((s) => s.progress.streak)
   const bubble = useNet((s) => (s.selfId ? s.bubbles[s.selfId]?.text : undefined))
 
   useEffect(() => {
@@ -162,7 +164,7 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
         <ringGeometry args={[0.22, 0.3, 24]} />
       </mesh>
       <group ref={group}>
-        <Avatar name={name} status={status} look={look} moving={moving} seated={seated} bubble={bubble} />
+        <Avatar name={name} status={status} streak={streak} look={look} moving={moving} seated={seated} bubble={bubble} />
         <mesh position={[0, 0.7, 0]} visible={false} onPointerOver={overSelf} onPointerOut={outSelf} onClick={clickSelf}>
           <cylinderGeometry args={[0.34, 0.34, 1.4, 10]} />
         </mesh>

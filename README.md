@@ -74,7 +74,7 @@ People make an account with an email and password on the title screen. Supabase 
 
 ### Keeping notes, desks and bookings
 
-Desk claims, the meeting room schedule and everyone's Focus Garden hours are saved to small files (so is the bulletin board, when there is no Supabase). Railway's disk is wiped on every deploy, so to keep them: on the server service add a Volume mounted at `/data`, then set the variable `DATA_DIR=/data`. The deploy log confirms with `Notes are kept in /data`. If it instead warns that something could not be saved, the volume is not writable by the server's user; setting `RAILWAY_RUN_UID=0` on the service is the usual fix.
+With Supabase set up, everything lasting is kept in the database and this section does not apply. Without it, the bulletin board, desk claims, the meeting room schedule and everyone's Focus Garden hours are saved to small files. Railway's disk is wiped on every deploy, so to keep them: on the server service add a Volume mounted at `/data`, then set the variable `DATA_DIR=/data`. The deploy log confirms with `Notes are kept in /data`. If it instead warns that something could not be saved, the volume is not writable by the server's user; setting `RAILWAY_RUN_UID=0` on the service is the usual fix.
 
 ### Inviting people
 

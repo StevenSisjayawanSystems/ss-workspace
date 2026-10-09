@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { ThreeEvent } from '@react-three/fiber'
 import { BEDS, BED_CAPACITY, BED_DEPTH, BED_WIDTH, bedOf, formatDuration, type GardenPlant, type Species } from '@guildhouse/shared'
 import { useGame } from '../game'
-import { useNet } from '../net/net'
+import { seedOf, useNet } from '../net/net'
 import { B, C, G, S, Sway } from './Furniture'
 import { Label } from './Label'
 import { PAL } from './toon'
@@ -127,10 +127,10 @@ function Plant({ plant }: { plant: GardenPlant }) {
   )
 }
 
-function Bed({ x, z, name, seconds }: { x: number; z: number; name: string; seconds: number }) {
+function Bed({ x, z, name, seed, seconds }: { x: number; z: number; name: string; seed: string; seconds: number }) {
   const inGarden = useGame((s) => s.zone === 'focusGarden')
   const [hover, setHover] = useState(false)
-  const bed = bedOf(name, seconds)
+  const bed = bedOf(seed, seconds)
   const step = (BED_WIDTH - 0.5) / BED_CAPACITY
   const caption = `${name} · ${bed.grown} grown · ${formatDuration(seconds)} of focus`
 
@@ -170,7 +170,7 @@ export function FocusGarden() {
       {BEDS.map((b, i) => {
         const plot = garden[i]
         return plot ? (
-          <Bed key={i} x={b.x} z={b.z} name={plot.name} seconds={plot.seconds} />
+          <Bed key={i} x={b.x} z={b.z} name={plot.name} seed={seedOf(plot, plot.name)} seconds={plot.seconds} />
         ) : (
           <group key={i} position={[b.x, 0, b.z]}>
             <B s={[BED_WIDTH, 0.12, BED_DEPTH]} p={[0, 0.06, 0]} c={PAL.woodDark} />

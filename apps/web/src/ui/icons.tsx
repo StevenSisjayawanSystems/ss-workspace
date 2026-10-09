@@ -232,4 +232,30 @@ export const Icon = {
       <path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v5M14 11v5" />
     </Svg>
   ),
+  check: () => (
+    <Svg>
+      <path d="M5 12.500l4.500 4.500L19 7.500" />
+    </Svg>
+  ),
+  tasks: () => (
+    <Svg>
+      <path d="M4 6.500l1.500 1.500L8 5M4 12.500l1.500 1.500L8 11M4 18.500l1.500 1.500L8 17M11 6.500h9M11 12.500h9M11 18.500h9" />
+    </Svg>
+  ),
+  grip: () => (
+    <Svg>
+      <path d="M9 6h.010M15 6h.010M9 12h.010M15 12h.010M9 18h.010M15 18h.010" strokeWidth="2.6" />
+    </Svg>
+  ),
+  target: () => (
+    <Svg>
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="3" />
+    </Svg>
+  ),
+  bell: () => (
+    <Svg>
+      <path d="M6 16V11a6 6 0 0 1 12 0v5l1.500 2h-15zM10 20.500h4M12 3v2" />
+    </Svg>
+  ),
 }

@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { BADGES, PLANT_SECONDS, QUIET_ZONES, bedOf, bondPoints, bondTier, formatDuration, levelOf, roomById, seatById, speciesFor, titleOf, xpOf, type BondWith, type Progress, type ZoneId } from '@guildhouse/shared'
 import { useGame } from '../game'
 import { HAIRS, ROBES } from '../look'
-import { askBonds, friends, joinCallIn, openTalk, remotes, ringPerson, saveCard, serverNow, useNet } from '../net/net'
+import { askBonds, bedFor, friends, seedOf, todo, joinCallIn, openTalk, remotes, ringPerson, saveCard, serverNow, useNet } from '../net/net'
 import { useStats } from '../stats'
 import { when } from '../time'
 import { Icon } from './icons'
@@ -10,6 +10,7 @@ import { Swatches } from './Join'
 import { PlantIcon } from './PlantIcon'
 import { Portrait } from './Portrait'
 import { RichText } from './RichText'
+import { SessionLog, TaskLine } from './Tasks'
 
 // What a level is, in one breath. Shown wherever levels appear, since the number alone explains nothing.
 export const LEVELS_EXPLAINED =
@@ -61,7 +62,7 @@ function Edit({ about, onDone }: { about: string; onDone: () => void }) {
   )
 }
 
-const TABS = ['About', 'Stats', 'Relationships', 'Plants', 'Accolades'] as const
+const TABS = ['About', 'Tasks', 'Stats', 'Relationships', 'Plants', 'Accolades'] as const
 type Tab = (typeof TABS)[number]
 
 // What two people have done together, in a line.
@@ -111,6 +112,8 @@ export function Profile() {
   const desks = useNet((s) => s.desks)
   const notes = useNet((s) => s.notes)
   const allBonds = useNet((s) => s.bonds)
+  const myTasks = useNet((s) => s.tasks)
+  const tasksOf = useNet((s) => s.tasksOf)
   const online = useNet((s) => s.status === 'online')
   const [tab, setTab] = useState<Tab>('About')
   const [editing, setEditing] = useState(false)
@@ -137,6 +140,13 @@ export function Profile() {
     if (key && tab === 'Relationships') askBonds(key)
   }, [key, tab, allBonds[myKey]])
 
+  // While the Tasks tab is open the server keeps us up to date with their list.
+  useEffect(() => {
+    if (!key || tab !== 'Tasks') return
+    todo.watch(key)
+    return () => void todo.watch('')
+  }, [key, tab])
+
   if (!id) return null
   const self = id === 'self'
   const r = self ? undefined : remotes.get(id)
@@ -156,8 +166,10 @@ export function Profile() {
   const joinedAt = self ? selfJoinedAt : r!.joinedAt
   const since = self ? mySince : r!.since
   const about = self ? myAbout : r!.about
-  const focus = garden.find((g) => g.name === name)?.seconds ?? 0
-  const bed = bedOf(name, focus)
+  const theirs = bedFor(garden, key, name)
+  const focus = theirs?.seconds ?? 0
+  const seed = seedOf(theirs, name)
+  const bed = bedOf(seed, focus)
   const hasDesk = Object.values(desks).includes(name)
   const pinned = notes.filter((n) => n.author === name).slice(-3).reverse()
   const earned = BADGES.filter((b) => b.earned(p))
@@ -172,6 +184,9 @@ export function Profile() {
     ['Days visited', p.days.toLocaleString()],
     ['Current streak', `${p.streak} ${p.streak === 1 ? 'day' : 'days'}`],
   ]
+
+  const theirTasks = tasksOf[key]
+  const nowList = self ? myTasks.list : (theirTasks?.list ?? [])
 
   // Their bonds, strongest first; and the one between them and us, which our own list always has fresh.
   const bonds = [...(allBonds[key] ?? [])].sort((a, b) => bondPoints(b) - bondPoints(a))
@@ -239,6 +254,43 @@ export function Profile() {
                       </ul>
                     </>
                   )}
+                </>
+              )}
+
+              {tab === 'Tasks' && (
+                <>
+                  <h3>
+                    Right now
+                    {(self || theirTasks?.shared) && (
+                      <span>
+                        {nowList.filter((t) => t.done).length} of {nowList.length} done
+                      </span>
+                    )}
+                  </h3>
+                  {!self && !theirTasks?.shared ? (
+                    <p className="profile-note">{name} keeps their list to themselves.</p>
+                  ) : nowList.length === 0 ? (
+                    <p className="profile-note">{self ? 'Nothing on your list.' : `Nothing on ${name}'s list right now.`}</p>
+                  ) : (
+                    <ul className="tasks-view">
+                      {nowList.map((t) => (
+                        <TaskLine key={t.id} task={t} />
+                      ))}
+                    </ul>
+                  )}
+                  {self && (
+                    <button
+                      className="profile-open"
+                      onClick={() => {
+                        useGame.setState({ tasksOpen: true })
+                        close()
+                      }}
+                    >
+                      Open my tasks
+                    </button>
+                  )}
+                  <h3>Sessions</h3>
+                  <SessionLog sessions={theirTasks?.sessions ?? []} />
                 </>
               )}
 
@@ -346,7 +398,7 @@ export function Profile() {
                   </h3>
                   <ul className="profile-plants">
                     {Array.from({ length: bed.grown + 1 }, (_, n) => {
-                      const species = speciesFor(name, n)
+                      const species = speciesFor(seed, n)
                       const growing = n === bed.grown
                       return (
                         <li key={n} className={growing ? 'growing' : ''}>

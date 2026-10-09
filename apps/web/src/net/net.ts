@@ -1,10 +1,10 @@
 import { Client, type Room } from '@colyseus/sdk'
 import { create } from 'zustand'
-import { QUIET_ZONES, SEATS, isBoard, roomById, seatById, standSpot, type BoardId, type BondWith, type Person, type Progress, type Seat, type ZoneId } from '@guildhouse/shared'
+import { QUIET_ZONES, SEATS, isBoard, roomById, seatById, standSpot, type BoardId, type BondWith, type Person, type Progress, type Seat, type Task, type TaskSession, type ZoneId } from '@guildhouse/shared'
 import { accessToken } from '../account'
 import { inReach, player, saveStatus, useGame, walkToSeat, type Profile } from '../game'
 import { DEFAULT_LOOK, type AvatarLook } from '../look'
-import { bell, knockSound, pat, ping, ringtone } from '../sound'
+import { alarmBell, bell, knockSound, pat, ping, ringtone } from '../sound'
 import { announce, carried, receive } from '../stats'
 
 // Other players. `tx/tz/tfacing` are the latest server values; `x/z/facing` are what is drawn and ease towards them.
@@ -138,9 +138,22 @@ export interface Knock {
   zone: ZoneId
 }
 
+// A bed in the Focus Garden. `member` is the account it belongs to, or '' on a server without accounts.
+export interface Bed {
+  name: string
+  seconds: number
+  member: string
+}
+
+// Someone's bed, by account when there is one and by name otherwise.
+export const bedFor = (garden: Bed[], member: string, name: string) => garden.find((b) => (b.member ? b.member === member : b.name === name))
+
+// What decides which plants a bed grows: fixed to the account, so a new name keeps the same garden.
+export const seedOf = (bed: Bed | undefined, name: string) => bed?.member || name
+
 interface NetState {
   // Focus Garden beds in the order they were first planted: who, and their total focus time.
-  garden: { name: string; seconds: number }[]
+  garden: Bed[]
   // Claimed workroom desks (desk id -> owner's name), the meeting room schedule, and rooms whose door is closed (zone -> who closed it).
   desks: Record<string, string>
   bookings: BookingItem[]
@@ -178,6 +191,15 @@ interface NetState {
   taken: Record<string, string>
   // Level of each other player, for name plates; and when we ourselves arrived (server time).
   ranks: Record<string, number>
+  // How many days running each other player has come in.
+  streaks: Record<string, number>
+  // Our own alarm (server time it rings, 0 for none), and the one going off right now.
+  alarm: { at: number; label: string }
+  alarmRinging: { at: number; label: string } | null
+  // Our own to-do list: whether others may see it, and how many more tasks can help our plant today.
+  tasks: { list: Task[]; shared: boolean; bonusLeft: number }
+  // Lists we have opened to look at, by whose they are, with the visits in which they finished tasks.
+  tasksOf: Record<string, { shared: boolean; list: Task[]; sessions: TaskSession[] }>
   selfJoinedAt: number
   juke: JukeState
   jukeError: string | null
@@ -190,7 +212,7 @@ interface NetState {
 
 const NO_MUSIC: JukeState = { queue: [], startedAt: 0, paused: false, pausedAt: 0 }
 
-export const useNet = create<NetState>(() => ({ me: '', account: false, seenAt: 0, since: 0, about: '', people: [], bonds: {}, talk: '', talks: [], unread: {}, loginNeeded: false, inviteNeeded: false, garden: [], desks: {}, bookings: [], closed: {}, knock: null, notes: [], statuses: {}, pomo: NO_TIMER, ringing: null, inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
+export const useNet = create<NetState>(() => ({ me: '', account: false, seenAt: 0, since: 0, about: '', people: [], bonds: {}, streaks: {}, alarm: { at: 0, label: '' }, alarmRinging: null, tasks: { list: [], shared: false, bonusLeft: 0 }, tasksOf: {}, talk: '', talks: [], unread: {}, loginNeeded: false, inviteNeeded: false, garden: [], desks: {}, bookings: [], closed: {}, knock: null, notes: [], statuses: {}, pomo: NO_TIMER, ringing: null, inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
 
 const SEND_MS = 80
 const MAX_CHAT = 400
@@ -269,9 +291,11 @@ function syncCall() {
   const call: string[] = []
   const taken: Record<string, string> = {}
   const ranks: Record<string, number> = {}
+  const streaks: Record<string, number> = {}
   const statuses: Record<string, string> = {}
   for (const r of remotes.values()) {
     ranks[r.id] = r.level
+    streaks[r.id] = r.streak
     if (r.status) statuses[r.id] = r.status
     if (!r.seat) continue
     taken[r.seat] = r.name
@@ -284,6 +308,7 @@ function syncCall() {
   if (!sameList(s.call, call)) patch.call = call
   if (JSON.stringify(s.taken) !== JSON.stringify(taken)) patch.taken = taken
   if (JSON.stringify(s.ranks) !== JSON.stringify(ranks)) patch.ranks = ranks
+  if (JSON.stringify(s.streaks) !== JSON.stringify(streaks)) patch.streaks = streaks
   if (JSON.stringify(s.statuses) !== JSON.stringify(statuses)) patch.statuses = statuses
   if (Object.keys(patch).length) useNet.setState(patch)
 }
@@ -307,8 +332,8 @@ function syncNotes(state: any) {
 
 let gardenKey = ''
 function syncGarden(state: any) {
-  const garden: { name: string; seconds: number }[] = []
-  state.garden?.forEach((p: any) => garden.push({ name: p.name, seconds: p.seconds }))
+  const garden: Bed[] = []
+  state.garden?.forEach((p: any) => garden.push({ name: p.name, seconds: p.seconds, member: p.member ?? '' }))
   const key = JSON.stringify(garden)
   if (key === gardenKey) return
   gardenKey = key
@@ -431,9 +456,10 @@ function disconnected(profile: Profile) {
   reservationsKey = ''
   gardenKey = ''
   ringtone.stop()
+  alarmBell.stop()
   room = null
   remotes.clear()
-  useNet.setState({ status: 'offline', selfId: null, ids: [], juke: NO_MUSIC, pomo: NO_TIMER, ringing: null, knock: null, desks: {}, bookings: [], closed: {}, inCall: false, call: [], taken: {}, ranks: {} })
+  useNet.setState({ status: 'offline', selfId: null, ids: [], juke: NO_MUSIC, pomo: NO_TIMER, ringing: null, alarmRinging: null, knock: null, desks: {}, bookings: [], closed: {}, inCall: false, call: [], taken: {}, ranks: {} })
   useGame.setState({ seat: null, pendingSeat: null })
   clearTimeout(retryTimer)
   retryTimer = setTimeout(async () => {
@@ -562,6 +588,16 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
       ping()
       announce(m.name, m.where === 'reply' ? 'commented on your note' : m.where === 'comment' ? 'named you in a comment' : 'named you on the bulletin board')
     })
+    joined.onMessage('alarm', (alarm: NetState['alarm']) => useNet.setState({ alarm }))
+    joined.onMessage('alarm:ring', (m: { at: number; label: string; missed: boolean }) => {
+      if (m.missed) return announce('You missed an alarm', `${new Date(m.at - clockOffset).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}${m.label ? ` · ${m.label}` : ''}`)
+      useNet.setState({ alarmRinging: { at: m.at, label: m.label } })
+      alarmBell.start()
+      clearTimeout(alarmTimeout)
+      alarmTimeout = setTimeout(() => stopAlarm(), ALARM_SECONDS * 1000)
+    })
+    joined.onMessage('tasks', (tasks: NetState['tasks']) => useNet.setState({ tasks }))
+    joined.onMessage('tasks:of', (m: { of: string; shared: boolean; list: Task[]; sessions: TaskSession[] }) => useNet.setState((s) => ({ tasksOf: { ...s.tasksOf, [m.of]: m } })))
     let greeted = false
     joined.onMessage('bonds', (m: { of: string; list: BondWith[] }) => {
       useNet.setState((s) => ({ bonds: { ...s.bonds, [m.of]: m.list } }))
@@ -726,6 +762,43 @@ export const board = {
   edit: (id: string, text: string, color: string) => room?.send('note:edit', { id, text, color }),
   comment: (id: string, text: string) => room?.send('note:comment', { id, text }),
   remove: (id: string) => room?.send('note:remove', id),
+}
+
+const ALARM_SECONDS = 60
+let alarmTimeout: ReturnType<typeof setTimeout> | undefined
+
+// Our own alarm. Times here are on this computer's clock; they are translated to the server's.
+export const alarm = {
+  set: (at: number, label: string) => room?.send('alarm:set', { at: at + clockOffset, label }),
+  clear: () => room?.send('alarm:clear'),
+  // When the alarm we have set will ring, by this computer's clock, to the nearest minute: the two
+  // clocks are only lined up to within a fraction of a second, which must not show as the minute before.
+  localTime: (at: number) => Math.round((at - clockOffset) / 60000) * 60000,
+}
+
+// Silences an alarm that is going off; `snoozeMinutes` sets it again for a little later.
+export function stopAlarm(snoozeMinutes = 0) {
+  const ringing = useNet.getState().alarmRinging
+  clearTimeout(alarmTimeout)
+  alarmBell.stop()
+  useNet.setState({ alarmRinging: null })
+  if (ringing && snoozeMinutes) alarm.set(Date.now() + snoozeMinutes * 60000, ringing.label)
+}
+
+// Our own to-do list. The server holds it; each of these comes back as a fresh `tasks`.
+export const todo = {
+  add: (title: string) => room?.send('task:add', title),
+  edit: (id: string, title: string) => room?.send('task:edit', { id, title }),
+  done: (id: string, done: boolean) => room?.send('task:done', { id, done }),
+  remove: (id: string) => room?.send('task:remove', id),
+  // Puts a task just before another, or last when `before` is left out.
+  move: (id: string, before?: string) => room?.send('task:move', { id, before }),
+  clear: () => room?.send('task:clear'),
+  // Closes the session: finished tasks are logged on the profile and cleared, the rest stay.
+  finish: () => room?.send('task:finish'),
+  share: (shared: boolean) => room?.send('task:share', shared),
+  // Opens someone's list so it arrives in `tasksOf` and stays up to date; '' stops.
+  watch: (key: string) => room?.send('tasks:watch', key),
 }
 
 // Asks for someone's bonds; the answer arrives in `bonds` under their key.

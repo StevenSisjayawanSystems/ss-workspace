@@ -23,7 +23,23 @@ function wrap(g: CanvasRenderingContext2D, text: string, maxWidth: number, maxLi
   return lines
 }
 
-function draw(text: string, bubble: boolean) {
+// A small flat flame, for a run of days. (x, y) is its left edge and vertical middle.
+function flame(g: CanvasRenderingContext2D, x: number, y: number) {
+  const tongue = (w: number, h: number, dy: number) => {
+    g.beginPath()
+    g.moveTo(x + 5 + w * 0.05, y - h + dy)
+    g.bezierCurveTo(x + 5 + w * 1.25, y - h * 0.15 + dy, x + 5 + w, y + h * 0.95 + dy, x + 5, y + h * 0.95 + dy)
+    g.bezierCurveTo(x + 5 - w, y + h * 0.95 + dy, x + 5 - w * 1.15, y - h * 0.05 + dy, x + 5 - w * 0.45, y - h * 0.4 + dy)
+    g.quadraticCurveTo(x + 5 - w * 0.2, y + dy, x + 5 + w * 0.05, y - h + dy)
+    g.fill()
+  }
+  g.fillStyle = '#ef7b3a'
+  tongue(5, 7.5, 0)
+  g.fillStyle = '#f7d154'
+  tongue(2.6, 4, 3)
+}
+
+function draw(text: string, bubble: boolean, streak = 0) {
   const size = bubble ? 15 : 14
   const lineH = size * 1.25
   const cv = document.createElement('canvas')
@@ -35,7 +51,10 @@ function draw(text: string, bubble: boolean) {
   const padX = bubble ? 13 : 8
   const padY = bubble ? 8 : 4
   const tail = bubble ? 9 : 0
-  const w = textW + padX * 2 + 6
+  // A name plate can carry a streak: a flame and the number of days, after the name.
+  const days = !bubble && streak > 0 ? String(streak) : ''
+  const extra = days ? 7 + 11 + 3 + Math.ceil(g.measureText(days).width) : 0
+  const w = textW + extra + padX * 2 + 6
   const h = Math.ceil(lines.length * lineH) + padY * 2 + tail + 6
   cv.width = w * RES
   cv.height = h * RES
@@ -73,7 +92,14 @@ function draw(text: string, bubble: boolean) {
     g.roundRect(1, 2, w - 2, h - 4, (h - 4) / 2)
     g.fill()
     g.fillStyle = '#ffffff'
-    g.fillText(text, w / 2, h / 2 + 0.5)
+    g.fillText(text, (w - extra) / 2, h / 2 + 0.5)
+    if (days) {
+      const x = (w - extra) / 2 + textW / 2 + 7
+      flame(g, x, h / 2)
+      g.textAlign = 'left'
+      g.fillStyle = '#f7c873'
+      g.fillText(days, x + 14, h / 2 + 0.5)
+    }
   }
   const texture = new THREE.CanvasTexture(cv)
   texture.colorSpace = THREE.SRGBColorSpace
@@ -82,7 +108,7 @@ function draw(text: string, bubble: boolean) {
 }
 
 // Name plates and speech bubbles drawn into the scene itself, always on top of the world.
-export function Label({ text, y, bubble = false }: { text: string; y: number; bubble?: boolean }) {
+export function Label({ text, y, bubble = false, streak = 0 }: { text: string; y: number; bubble?: boolean; streak?: number }) {
   // Redraw once the web font has arrived, otherwise the first labels keep the fallback face.
   const [fonts, setFonts] = useState(0)
   useEffect(() => {
@@ -92,7 +118,7 @@ export function Label({ text, y, bubble = false }: { text: string; y: number; bu
       alive = false
     }
   }, [])
-  const { texture, w, h } = useMemo(() => draw(text, bubble), [text, bubble, fonts])
+  const { texture, w, h } = useMemo(() => draw(text, bubble, streak), [text, bubble, streak, fonts])
   useEffect(() => () => texture.dispose(), [texture])
   return (
     <sprite position={[0, y + h / PX_PER_UNIT / 2, 0]} scale={[w / PX_PER_UNIT, h / PX_PER_UNIT, 1]} renderOrder={bubble ? 11 : 10}>

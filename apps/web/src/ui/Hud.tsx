@@ -6,7 +6,7 @@ import { clockText, localHour, skyAt } from '../time'
 import { useStats } from '../stats'
 import { Icon } from './icons'
 import { Knock } from './Knock'
-import { Pomodoro } from './Pomodoro'
+import { Alarm, Pomodoro } from './Pomodoro'
 import { Profile } from './Profile'
 import { Ring } from './Ring'
 import { Roster } from './Roster'
@@ -84,14 +84,22 @@ function Clock() {
 
 function NotesPill() {
   const count = useNet((s) => s.notes.length)
+  const left = useNet((s) => s.tasks.list.filter((t) => !t.done).length)
   const online = useNet((s) => s.status === 'online')
   if (!online) return null
   return (
-    <button className="notes-pill" title="Open the bulletin board" onClick={() => useGame.setState({ boardOpen: true })}>
-      <Icon.pin />
-      <span>Board</span>
-      {count > 0 && <i>{count}</i>}
-    </button>
+    <div className="side-pills">
+      <button className="notes-pill" title="Open the bulletin board" onClick={() => useGame.setState({ boardOpen: true })}>
+        <Icon.pin />
+        <span>Board</span>
+        {count > 0 && <i>{count}</i>}
+      </button>
+      <button className="notes-pill" title="Your to-do list" onClick={() => useGame.setState({ tasksOpen: true })}>
+        <Icon.tasks />
+        <span>Tasks</span>
+        {left > 0 && <i>{left}</i>}
+      </button>
+    </div>
   )
 }
 
@@ -137,6 +145,7 @@ export function Hud() {
       <Clock />
       <Pomodoro />
       <Ring />
+      <Alarm />
       <Knock />
       <Profile />
       <NotesPill />

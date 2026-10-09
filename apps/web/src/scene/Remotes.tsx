@@ -13,6 +13,7 @@ function RemoteAvatar({ id }: { id: string }) {
   const seated = useRef(false)
   const bubble = useNet((s) => s.bubbles[id]?.text)
   const status = useNet((s) => s.statuses[id])
+  const streak = useNet((s) => s.streaks[id])
   const [hover, setHover] = useState(false)
   const info = remotes.get(id)
 
@@ -55,7 +56,7 @@ function RemoteAvatar({ id }: { id: string }) {
 
   return (
     <group ref={group} position={[info.x, 0, info.z]}>
-      <Avatar name={info.name} status={status} look={info.look} moving={moving} seated={seated} bubble={bubble} />
+      <Avatar name={info.name} status={status} streak={streak} look={info.look} moving={moving} seated={seated} bubble={bubble} />
       <mesh position={[0, 0.7, 0]} visible={false} onPointerOver={over} onPointerOut={out} onClick={click}>
         <cylinderGeometry args={[0.34, 0.34, 1.4, 10]} />
       </mesh>
