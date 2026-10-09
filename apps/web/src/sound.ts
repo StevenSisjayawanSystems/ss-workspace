@@ -48,3 +48,15 @@ export const ringtone = {
     ringTimer = undefined
   },
 }
+
+// A soft two-note chime: someone messaged you or used your name.
+export function ping() {
+  tone(988, 0, 0.18, 0.08)
+  tone(1319, 0.09, 0.3, 0.08)
+}
+
+// The pat of a sticky note pressed onto the board.
+export function pat() {
+  tone(190, 0, 0.07, 0.2)
+  tone(120, 0.03, 0.09, 0.16)
+}

@@ -92,3 +92,10 @@ export function skyAt(hour: number): Sky {
 export const sky = { current: skyAt(localHour()) }
 
 if (import.meta.env.DEV) Object.assign(window, { __clock: clock })
+
+// A short stamp for a message or a note: the time if it is from today, otherwise the date.
+export function when(at: number): string {
+  const d = new Date(at)
+  const today = new Date().toDateString() === d.toDateString()
+  return today ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+}

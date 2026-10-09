@@ -12,6 +12,7 @@
   "dependencies": {
     "@colyseus/schema": "^5.0.36",
     "@guildhouse/shared": "workspace:^",
+    "@supabase/supabase-js": "^2.117.3",
     "colyseus": "^0.18.9",
     "tsx": "^4.23.15"
   },

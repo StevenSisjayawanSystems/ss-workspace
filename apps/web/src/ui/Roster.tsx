@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BADGES, PLANT_SECONDS, QUIET_ZONES, bedOf, formatDuration, levelOf, roomById, seatById, titleOf, xpOf, type ZoneId } from '@guildhouse/shared'
+import { signOut, useAccount } from '../account'
 import { useGame } from '../game'
 import { joinCallIn, remotes, ringPerson, serverNow, setStatus, useNet } from '../net/net'
 import { LEVELS_EXPLAINED } from './Profile'
@@ -80,6 +81,7 @@ export function Roster({ onClose }: { onClose: () => void }) {
   const zone = useGame((s) => s.zone)
   const seat = useGame((s) => s.seat)
   const progress = useStats((s) => s.progress)
+  const email = useAccount((s) => s.email)
   const myStatus = useGame((s) => s.status)
   const myFocus = useNet((s) => s.garden.find((p) => p.name === profile?.name)?.seconds ?? 0)
   const bed = bedOf(profile?.name ?? '', myFocus)
@@ -123,6 +125,14 @@ export function Roster({ onClose }: { onClose: () => void }) {
           <Person key={r.id} row={r} />
         ))}
       </ul>
+      {email && (
+        <div className="card-account">
+          Signed in as {email}
+          <button className="card-link" onClick={() => void signOut()?.then(() => location.reload())}>
+            Sign out
+          </button>
+        </div>
+      )}
 
       <div className="roster-head">
         <span>Your status</span>

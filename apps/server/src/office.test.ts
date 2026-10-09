@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Client, type Room } from '@colyseus/sdk'
 import { DESKS, SEATS, SPAWN, circleFree } from '@guildhouse/shared'
 import { createServer } from './app'
-import { cleanColor, cleanText, validMove } from './rules'
+import { cleanBlock, cleanColor, cleanText, validMove } from './rules'
 
 describe('rules', () => {
   it('accepts a normal step and rejects teleports and walls', () => {
@@ -16,6 +16,7 @@ describe('rules', () => {
     expect(cleanColor('red; drop', '#000000')).toBe('#000000')
     expect(cleanText('  hi\u0000there  ', 5)).toBe('hi th')
     expect(cleanText(42, 5)).toBe('')
+    expect(cleanBlock('\n\nTitle\r\n  - one\u0007\n\n\n\nend  \n', 100)).toBe('Title\n  - one \n\nend')
   })
 })
 
@@ -110,12 +111,9 @@ describe('office room', () => {
     expect(players(b)[a.sessionId].seat).toBe('')
     expect(circleFree(players(b)[a.sessionId].x, players(b)[a.sessionId].z)).toBe(true)
 
-    // Standing: arrival time is the server's; level and totals are reported by the client and sanitised.
+    // Standing: arrival time, level and totals are all the server's.
     expect(Date.now() - players(b)[a.sessionId].joinedAt).toBeLessThan(60000)
-    expect(players(b)[a.sessionId].level).toBe(1)
-    a.send('progress', { level: 4.7, totalSeconds: 7260, streak: -3 })
-    await wait(200)
-    expect(players(b)[a.sessionId]).toMatchObject({ level: 4, totalSeconds: 7260, streak: 0, pomodoros: 0 })
+    expect(players(b)[a.sessionId]).toMatchObject({ level: 1, streak: 1, days: 1, pomodoros: 0 })
 
     // Ringing: relayed to the one person with the caller's name and room; quiet rooms cannot be rung from.
     const rings: any[] = []
@@ -143,7 +141,7 @@ describe('office room', () => {
     expect(a.state.pomodoro.phase).toBe('idle')
 
     // Bulletin board and status are shared; a note can be taken down by anyone.
-    a.send('note:add', { text: '  Standup at 10  ', color: '#9fd0c4' })
+    a.send('note:add', { text: 'Standup at 10  ', color: '#9fd0c4' })
     a.send('note:add', { text: '', color: 'red' })
     a.send('status', '  Focusing\u0000 ')
     await wait(200)

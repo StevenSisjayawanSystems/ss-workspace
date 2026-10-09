@@ -345,7 +345,8 @@ input {
   color: var(--gold);
 }
 
-.field input:not([type]) {
+.field input:not([type]),
+.field input[type='password'] {
   width: 100%;
   padding: 9px 13px;
   font-size: 16px;
@@ -355,7 +356,8 @@ input {
   outline: none;
 }
 
-.field input:not([type]):focus {
+.field input:not([type]):focus,
+.field input[type='password']:focus {
   border-color: var(--cream);
 }
 
@@ -1794,7 +1796,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
   color: var(--gold);
 }
 
-/* Bulletin board */
+/* Bulletin board: a cork board with two faces, covered in sticky notes */
 .board-scrim {
   position: fixed;
   inset: 0;
@@ -1806,11 +1808,12 @@ body:has(.meditation:not([hidden])) .call.quiet {
 }
 
 .board {
+  position: relative;
   display: flex;
   flex-direction: column;
-  width: min(760px, 100%);
-  max-height: min(680px, 100%);
-  padding: 16px;
+  width: min(1080px, 100%);
+  height: min(780px, 100%);
+  padding: 14px 16px 16px;
   background: var(--panel);
   border-radius: 3px;
   box-shadow: var(--edge);
@@ -1820,211 +1823,940 @@ body:has(.meditation:not([hidden])) .call.quiet {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font: 700 13px var(--display);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--gold);
+  gap: 12px;
 }
 
-.board-new {
-  margin-top: 12px;
+.board-faces {
+  display: flex;
+  gap: 6px;
 }
 
-.board-new textarea {
-  display: block;
-  width: 100%;
-  padding: 9px 12px;
-  font: inherit;
-  color: inherit;
-  resize: none;
-  background: var(--well);
-  border: 1px solid var(--gold-deep);
-  border-radius: 3px;
-  outline: none;
-}
-
-.board-new textarea:focus {
-  border-color: var(--cream);
-}
-
-.board-new-row {
+.board-faces button {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: 8px;
-}
-
-.board-new-row > span {
-  margin-left: auto;
-  font-size: 12px;
-  color: #7f8aa0;
-  font-variant-numeric: tabular-nums;
-}
-
-.board-colors {
-  display: flex;
-  gap: 7px;
-}
-
-.board-colors button {
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: 1px solid rgba(243, 234, 214, 0.5);
+  gap: 8px;
+  padding: 6px 14px;
+  font: 700 12px var(--display);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #9aa5b8;
+  background: none;
+  border: 1px solid transparent;
   border-radius: 2px;
   cursor: pointer;
 }
 
-.board-colors button.on {
-  outline: 2px solid var(--gold);
-  outline-offset: 2px;
+.board-faces button.on {
+  color: var(--gold);
+  background: var(--well);
+  border-color: var(--gold-deep);
 }
 
-.board-notes {
+.board-faces i {
+  font: 800 11px var(--ui);
+  font-style: normal;
+  letter-spacing: 0;
+  color: var(--cream);
+}
+
+/* The board itself: cork in a walnut frame. The speckle is a tile of flat flecks, not a gradient. */
+.board-frame {
+  flex: 1;
+  min-height: 0;
+  margin-top: 12px;
+  overflow: auto;
+  background: #3a2716;
+  border: 9px solid #6e4b2c;
+  border-radius: 3px;
+  outline: 2px solid #3a2716;
+  outline-offset: -2px;
+}
+
+.board-surface {
+  position: relative;
+  min-width: 700px;
+  height: 100%;
+  min-height: 380px;
+  overflow: hidden;
+  background: #c9a070
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='72'%3E%3Cg fill='%23b98d5c'%3E%3Crect x='8' y='11' width='3' height='2'/%3E%3Crect x='41' y='6' width='2' height='3'/%3E%3Crect x='60' y='30' width='3' height='2'/%3E%3Crect x='24' y='44' width='2' height='2'/%3E%3Crect x='50' y='58' width='3' height='2'/%3E%3Crect x='6' y='62' width='2' height='3'/%3E%3C/g%3E%3Cg fill='%23d8b486'%3E%3Crect x='28' y='20' width='3' height='2'/%3E%3Crect x='63' y='9' width='2' height='2'/%3E%3Crect x='12' y='36' width='2' height='3'/%3E%3Crect x='44' y='38' width='3' height='2'/%3E%3Crect x='33' y='64' width='2' height='2'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+.board-lanes {
+  position: absolute;
+  inset: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
-  margin-top: 16px;
-  overflow-y: auto;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+/* Lanes are marked off with string, and each hangs a plaque like the room banners. */
+.board-lanes > div {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 12px;
+  border-left: 2px dashed rgba(58, 39, 22, 0.38);
+  --lane: var(--gold);
+}
+
+.board-lanes > div:first-child {
+  border-left: 0;
+}
+
+.board-lanes > .doing {
+  --lane: #6fb8ad;
+}
+
+.board-lanes > .done {
+  --lane: #93c46f;
+}
+
+.board-lanes > .remove {
+  --lane: #e07a5f;
+}
+
+.board-lanes > div.on {
+  background: rgba(243, 234, 214, 0.2);
+}
+
+.board-lanes header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px 5px 24px;
+  font: 700 11px var(--display);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--cream);
+  background: #0e1726;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--gold-deep), 0 0 0 2px var(--teal-ink), 2px 4px 0 rgba(58, 39, 22, 0.35);
+}
+
+/* The lane's colour, as a stud on its plaque. */
+.board-lanes header::before {
+  content: '';
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  background: var(--lane);
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.board-lanes header i {
+  min-width: 18px;
+  padding: 1px 5px;
+  font: 800 11px var(--ui);
+  letter-spacing: 0;
+  text-align: center;
+  color: #0e1726;
+  background: var(--lane);
+  border-radius: 999px;
+}
+
+/* An empty lane shows the outline of a note where one could go. */
+.board-lanes em,
+.board-empty em {
+  display: grid;
+  place-items: center;
+  width: 140px;
+  height: 140px;
+  margin-top: 46px;
+  padding: 14px;
+  font: 700 12.5px var(--ui);
+  line-height: 1.4;
+  text-align: center;
+  color: rgba(58, 39, 22, 0.7);
+  border: 2px dashed rgba(58, 39, 22, 0.42);
+  border-radius: 2px;
+  transform: rotate(-2deg);
+}
+
+.board-lanes > div:nth-child(even) em {
+  transform: rotate(1.5deg);
 }
 
 .board-empty {
-  grid-column: 1 / -1;
-  padding: 28px 0;
-  text-align: center;
-  color: #7f8aa0;
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
 }
 
-.note {
+.board-empty em {
+  width: 210px;
+  height: 150px;
+  margin: 0;
+}
+
+.sticky {
+  position: absolute;
   display: flex;
   flex-direction: column;
-  min-height: 110px;
-  padding: 12px 12px 8px;
+  width: 150px;
+  min-height: 150px;
+  padding: 17px 11px 6px;
   color: #1c1a17;
+  border-radius: 1px;
+  box-shadow: 2px 3px 0 rgba(36, 24, 10, 0.32);
+  transform: translate(-50%, -50%) rotate(var(--tilt));
+  transition: transform 0.16s, box-shadow 0.16s, left 0.1s linear, top 0.1s linear;
+  cursor: grab;
+  touch-action: none;
+}
+
+/* A strip of tape holds each note up. */
+.sticky::before {
+  content: '';
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  width: 46px;
+  height: 15px;
+  margin-left: -23px;
+  background: rgba(243, 234, 214, 0.74);
+  transform: rotate(-2deg);
+}
+
+.sticky.long {
+  width: 190px;
+}
+
+/* Picked up: it straightens, lifts off the board and follows the pointer exactly. */
+.sticky.held {
+  z-index: 5;
+  transform: translate(-50%, -50%) rotate(0deg) scale(1.07);
+  box-shadow: 10px 13px 0 rgba(36, 24, 10, 0.26);
+  transition: transform 0.12s, box-shadow 0.12s;
+  cursor: grabbing;
+}
+
+.sticky.held::before {
+  opacity: 0;
+}
+
+/* Going up: the note flies over from where it was written, is pressed flat, and the tape goes on. */
+.sticky.fresh {
+  z-index: 6;
+  animation: stick 0.66s cubic-bezier(0.3, 0.7, 0.25, 1) both;
+}
+
+.sticky.fresh::before {
+  animation: tape 0.66s both;
+}
+
+@keyframes stick {
+  0% {
+    transform: translate(calc(-50% + var(--fx)), calc(-50% + var(--fy))) rotate(-9deg) scale(1.3);
+    box-shadow: 16px 20px 0 rgba(36, 24, 10, 0.2);
+  }
+  62% {
+    transform: translate(-50%, -50%) rotate(var(--tilt)) scale(1.1);
+    box-shadow: 9px 11px 0 rgba(36, 24, 10, 0.24);
+  }
+  80% {
+    transform: translate(-50%, -50%) rotate(var(--tilt)) scale(0.95);
+    box-shadow: 0 0 0 rgba(36, 24, 10, 0.32);
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(var(--tilt)) scale(1);
+    box-shadow: 2px 3px 0 rgba(36, 24, 10, 0.32);
+  }
+}
+
+@keyframes tape {
+  0%,
+  74% {
+    opacity: 0;
+    transform: rotate(-2deg) scale(1.5);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(-2deg) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sticky.fresh,
+  .sticky.fresh::before {
+    animation: none;
+  }
+}
+
+/* A note that names you. */
+.sticky.named {
+  outline: 3px solid var(--cream);
+  outline-offset: 2px;
+}
+
+.sticky {
+  cursor: pointer;
+}
+
+.sticky > .rich {
+  flex: 1;
+  max-height: 230px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.sticky footer em {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 3px;
+  font: 800 11px var(--ui);
+}
+
+.sticky .mention {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.sticky .mention.me {
+  padding: 0 3px;
+  color: #fff;
+  background: #1c1a17;
+  text-decoration: none;
+}
+
+.sticky footer {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10.5px;
+  color: rgba(28, 26, 23, 0.7);
+}
+
+.sticky footer span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sticky footer button {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  font: 800 11px var(--ui);
+  color: rgba(28, 26, 23, 0.7);
+  background: none;
+  border: 0;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.sticky footer button:hover,
+.sticky footer button.on {
+  color: #1c1a17;
+  background: rgba(28, 26, 23, 0.14);
+}
+
+.sticky footer svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* Writing a note: a pad in the chosen colour, then its colour and where it should go. */
+.board-new {
+  display: flex;
+  align-items: flex-end;
+  gap: 22px;
+  margin-top: 18px;
+}
+
+.board-pad {
+  position: relative;
+  flex: none;
+  width: 300px;
+  padding: 14px 12px 20px;
+  border-radius: 1px;
+  box-shadow: 3px 4px 0 rgba(0, 0, 0, 0.45);
+  transform: rotate(-1.2deg);
+}
+
+.board-pad::before {
+  content: '';
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  width: 52px;
+  height: 15px;
+  margin-left: -26px;
+  background: rgba(243, 234, 214, 0.8);
+  transform: rotate(2deg);
+}
+
+.board-pad > span {
+  position: absolute;
+  right: 10px;
+  bottom: 5px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(28, 26, 23, 0.55);
+}
+
+.board-new-side {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding-bottom: 2px;
+}
+
+.board-opt > span {
+  display: block;
+  margin-bottom: 7px;
+  font: 600 10.5px var(--display);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.board-colors {
+  display: flex;
+  gap: 8px;
+}
+
+.board-colors button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 1px;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+
+.board-colors button.on {
+  outline: 2px solid var(--cream);
+  outline-offset: 2px;
+}
+
+.board-lane-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.board-lane-pick button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px 5px 10px;
+  font: 700 12px var(--ui);
+  color: var(--cream);
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+  border-radius: 2px;
+  cursor: pointer;
+  --lane: var(--gold);
+}
+
+.board-lane-pick .doing {
+  --lane: #6fb8ad;
+}
+
+.board-lane-pick .done {
+  --lane: #93c46f;
+}
+
+.board-lane-pick .remove {
+  --lane: #e07a5f;
+}
+
+.board-lane-pick i {
+  width: 7px;
+  height: 7px;
+  background: var(--lane);
+  transform: rotate(45deg);
+}
+
+.board-lane-pick button:hover {
+  border-color: var(--gold);
+}
+
+.board-lane-pick button.on {
+  color: #0e1726;
+  background: var(--lane);
+  border-color: var(--lane);
+}
+
+.board-lane-pick button.on i {
+  background: #0e1726;
+}
+
+.board-stick {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 22px;
+  font: 700 12px var(--display);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #0e1726;
+  background: var(--gold);
+  border: 0;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.board-stick:hover:not(:disabled) {
+  background: #e8c777;
+}
+
+.board-stick:disabled {
+  color: #8d8672;
+  background: #2a3244;
+  cursor: default;
+}
+
+.board-stick svg {
+  width: 15px;
+  height: 15px;
+}
+
+@media (max-width: 640px) {
+  .board-scrim {
+    padding: 8px;
+  }
+
+  .board {
+    padding: 10px;
+  }
+
+  .board-new {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .board-pad {
+    width: 100%;
+    transform: none;
+  }
+
+  .board-pad .richpad-page {
+    min-height: 44px;
+    max-height: 90px;
+  }
+
+  .board-faces button {
+    padding: 6px 9px;
+    letter-spacing: 0.08em;
+  }
+}
+
+/* Naming someone with @: the list of people offered while typing, and how a mention reads */
+.mention {
+  font-weight: 800;
+  color: var(--gold);
+}
+
+.mention.me {
+  padding: 0 3px;
+  color: var(--teal-ink);
+  background: var(--gold);
   border-radius: 2px;
 }
 
-.note p {
-  flex: 1;
-  margin: 0 0 10px;
-  font-size: 14px;
-  line-height: 1.4;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  -webkit-user-select: text;
-  user-select: text;
+.mention-list {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 5;
+  min-width: 180px;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  font: 600 14px var(--ui);
+  color: var(--cream);
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+  border-radius: 3px;
 }
 
-.note footer {
+.mention-list li {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  font-size: 11.500px;
-  color: rgba(28, 26, 23, 0.7);
+  padding: 4px 9px;
+  border-radius: 2px;
+  cursor: pointer;
 }
 
-.note footer button {
+.mention-list li.on {
+  color: var(--teal-ink);
+  background: var(--gold);
+}
+
+.mention-list i,
+.chat-people i {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  background: #56617a;
+  border-radius: 50%;
+}
+
+.mention-list i.here,
+.chat-people i.here {
+  background: #86c98a;
+}
+
+/* Chat: tabs for the room and each direct conversation, and who you can message */
+.chat-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.chat-tabs button {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 132px;
+  padding: 3px 10px;
+  font: 700 12px var(--ui);
+  color: var(--cream);
+  background: var(--panel);
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.chat-tabs button.on {
+  color: var(--gold);
+  border-color: var(--gold-deep);
+}
+
+.chat-tabs button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-tabs i {
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font: 800 10px var(--ui);
+  color: #fff;
+  background: var(--red);
+  border-radius: 999px;
+}
+
+.chat-tabs em {
+  display: grid;
+  opacity: 0.55;
+}
+
+.chat-tabs em:hover {
+  opacity: 1;
+}
+
+.chat-tabs em svg {
+  width: 10px;
+  height: 10px;
+}
+
+.chat-tabs .chat-tool {
+  padding: 3px 7px;
+}
+
+.chat-tabs button:not(.chat-tool) + .chat-tool {
+  margin-left: auto;
+}
+
+.chat-tool svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.chat-people {
+  max-height: 190px;
+  margin: 0 0 6px;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--gold-deep);
+  border-radius: 3px;
+}
+
+.chat-people button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.chat-people button:hover {
+  background: var(--well);
+}
+
+.chat-people small {
+  margin-left: auto;
+  font-size: 11px;
+  color: #7f8aa0;
+}
+
+.chat-people .none,
+.chat-empty {
+  padding: 4px 8px;
+  color: #7f8aa0;
+}
+
+.chat-empty {
+  padding: 2px 0;
+}
+
+.chat.tall .chat-log {
+  max-height: min(46vh, 420px);
+}
+
+.chat-line p {
+  margin: 0;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.chat-line.head:not(:first-child) {
+  margin-top: 5px;
+}
+
+.chat-who {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.chat-who time {
+  font-size: 11px;
+  font-weight: 600;
+  color: #7f8aa0;
+}
+
+.chat-line.mine .chat-who b {
+  color: var(--cream);
+}
+
+/* A message that names you. */
+.chat-line.named {
+  margin-left: -10px;
+  padding-left: 7px;
+  border-left: 3px solid var(--gold);
+  background: rgba(216, 178, 94, 0.12);
+}
+
+.chat.docked .chat-line.named {
+  margin-left: 0;
+}
+
+.chat form {
+  position: relative;
+}
+
+.chat form .icon-btn:disabled {
+  color: #7f8aa0;
+  background: var(--well);
+  border-color: var(--gold-deep);
+  cursor: default;
+}
+
+/* Title screen: signing in */
+.field-note.calm {
+  color: #9aa5b8;
+}
+
+.card-link {
+  display: block;
+  margin: 12px auto 0;
   padding: 0;
-  color: rgba(28, 26, 23, 0.7);
+  font: 700 12px var(--ui);
+  color: var(--gold);
+  text-decoration: underline;
   background: none;
   border: 0;
   cursor: pointer;
 }
 
-.note footer button:hover {
-  color: #1c1a17;
+.card-wait {
+  font: 600 12px var(--display);
+  letter-spacing: 0.22em;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--gold);
 }
 
-.note footer svg {
-  width: 13px;
-  height: 13px;
+.card-account {
+  margin-top: 14px;
+  font-size: 12px;
+  text-align: center;
+  color: #9aa5b8;
+  overflow-wrap: anywhere;
 }
 
-/* Profile card */
-.profile {
-  position: absolute;
-  top: 50%;
-  right: max(16px, env(safe-area-inset-right));
-  transform: translateY(-50%);
-  width: min(300px, calc(100vw - 32px));
+.card-account .card-link {
+  display: inline;
+  margin: 0 0 0 8px;
+}
+
+.profile-action.quiet {
+  color: var(--cream);
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+}
+
+/* Profile: a modal with everything about one person */
+.profile-scrim {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
   padding: 16px;
+  background: rgba(8, 13, 22, 0.6);
+  pointer-events: auto;
+  z-index: 36;
+}
+
+.profile {
+  position: relative;
+  width: min(580px, 100%);
+  max-height: 100%;
+  padding: 24px;
+  overflow-y: auto;
   background: var(--panel);
   border-radius: 3px;
   box-shadow: var(--edge);
-  pointer-events: auto;
-  z-index: 3;
 }
 
 .profile > .icon-btn {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 12px;
+  right: 12px;
+}
+
+.portrait {
+  flex: none;
+  display: block;
+  width: 96px;
+  height: 96px;
+  border-radius: 3px;
+  box-shadow: var(--edge);
 }
 
 .profile-top {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 18px;
+  padding-right: 28px;
 }
 
-.profile-initial {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 46px;
-  height: 46px;
+.profile-top h2 {
+  margin: 0;
   font: 700 22px var(--display);
-  color: var(--teal-ink);
-  background: var(--gold);
-  border-radius: 50%;
+  letter-spacing: 0.06em;
+  overflow-wrap: anywhere;
 }
 
-.profile-top b {
-  display: block;
-  font-size: 17px;
-}
-
-.profile-top span {
+.profile-rank {
+  margin-top: 2px;
   font-size: 13px;
+  font-weight: 700;
   color: var(--gold);
 }
 
-.profile-where {
-  margin-top: 12px;
+.profile-now {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
   font-size: 13px;
   color: #b9c2d2;
 }
 
-.profile-where em {
+.profile-now i {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  background: #86c98a;
+  border-radius: 50%;
+}
+
+.profile-now i.busy {
+  background: var(--gold);
+}
+
+.profile-about {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  background: var(--well);
+  border-left: 3px solid var(--gold-deep);
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.profile-about.none {
+  color: #7f8aa0;
+}
+
+.profile h3 {
   display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 4px;
-  font-style: normal;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 8px;
+  font: 700 11px var(--display);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
   color: var(--gold);
 }
 
-.profile-where svg {
-  width: 13px;
-  height: 13px;
-}
-
-.profile-rank {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(216, 178, 94, 0.18);
+.profile h3 span {
+  font: 600 12px var(--ui);
+  letter-spacing: 0;
+  text-transform: none;
+  color: #9aa6ba;
 }
 
 .profile dl {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 8px;
-  margin: 10px 0 0;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px 8px;
+  margin: 16px 0 0;
 }
 
 .profile dt {
@@ -2036,6 +2768,702 @@ body:has(.meditation:not([hidden])) .call.quiet {
   margin: 0;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
+}
+
+.profile-around {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #b9c2d2;
+}
+
+.profile-around b {
+  color: var(--cream);
+}
+
+.profile-notes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.profile-notes li {
+  max-height: 120px;
+  padding: 9px 10px;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #1c1a17;
+  border-radius: 1px;
+  box-shadow: 2px 3px 0 rgba(0, 0, 0, 0.4);
+}
+
+.profile-notes small {
+  display: block;
+  margin-top: 6px;
+  opacity: 0.65;
+}
+
+.profile-notes .mention {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.profile-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.profile-actions .profile-action {
+  flex: 1;
+  margin-top: 0;
+}
+
+.profile-action:disabled {
+  color: #8d8672;
+  background: #2a3244;
+  cursor: default;
+}
+
+.profile-edit-look {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  padding-right: 28px;
+}
+
+.profile-edit-look > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.field textarea {
+  display: block;
+  width: 100%;
+  padding: 9px 13px;
+  font: inherit;
+  color: inherit;
+  resize: none;
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+  border-radius: 2px;
+  outline: none;
+}
+
+.field textarea:focus {
+  border-color: var(--cream);
+}
+
+@media (max-width: 560px) {
+  .profile {
+    padding: 18px;
+  }
+
+  .profile-plants {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .profile-badges {
+    grid-template-columns: 1fr;
+  }
+
+  .profile dl {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .profile-notes {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-actions {
+    flex-direction: column;
+  }
+}
+
+.profile-rank em {
+  margin-left: 8px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-style: normal;
+  color: var(--teal-ink);
+  background: #86c98a;
+  border-radius: 2px;
+}
+
+.profile-tabs {
+  display: flex;
+  gap: 2px;
+  margin-top: 18px;
+  overflow-x: auto;
+  border-bottom: 1px solid rgba(216, 178, 94, 0.25);
+  scrollbar-width: none;
+}
+
+.profile-tabs button {
+  position: relative;
+  flex: none;
+  margin-bottom: -1px;
+  padding: 8px 12px;
+  font: 700 11px var(--display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9aa5b8;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+
+.profile-tabs button:hover {
+  color: var(--cream);
+}
+
+.profile-tabs button.on {
+  color: var(--gold);
+  border-bottom-color: var(--gold);
+}
+
+/* Something waiting on this tab. */
+.profile-tabs i {
+  position: absolute;
+  top: 5px;
+  right: 2px;
+  width: 7px;
+  height: 7px;
+  background: var(--red);
+  border-radius: 50%;
+}
+
+.profile-body {
+  min-height: 260px;
+  padding-top: 16px;
+}
+
+.profile-body h3:not(:first-child) {
+  margin-top: 20px;
+}
+
+.profile-title {
+  margin: 0;
+  font: 700 20px var(--display);
+  letter-spacing: 0.08em;
+}
+
+.profile-badges {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.profile-badges li {
+  padding: 8px 11px;
+  color: #6b7689;
+  border: 1px dashed #3a465c;
+  border-radius: 2px;
+}
+
+.profile-badges b,
+.profile-badges span {
+  display: block;
+}
+
+.profile-badges span {
+  font-size: 11.5px;
+}
+
+.profile-badges li.on {
+  color: var(--teal-ink);
+  background: var(--gold);
+  border: 1px solid var(--gold);
+}
+
+.profile-bond {
+  padding: 12px 14px;
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+  border-radius: 2px;
+}
+
+.profile-bond p {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #b9c2d2;
+}
+
+.profile-friend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.profile-friend span {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.profile-friend button,
+.profile-bonds li > button {
+  flex: none;
+  padding: 5px 12px;
+  font: 700 12px var(--ui);
+  color: var(--cream);
+  background: none;
+  border: 1px solid var(--gold-deep);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.profile-friend button.on,
+.profile-bonds li > button.on {
+  color: var(--teal-ink);
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
+.profile-friend button:disabled {
+  color: #8d8672;
+  background: #2a3244;
+  border-color: #2a3244;
+  cursor: default;
+}
+
+.profile-bonds {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.profile-bonds li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(216, 178, 94, 0.12);
+}
+
+.profile-bonds li > i {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  background: #56617a;
+  border-radius: 50%;
+}
+
+.profile-bonds li > i.here {
+  background: #86c98a;
+}
+
+.profile-bonds li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-bonds b,
+.profile-link {
+  display: block;
+  font: 800 14px var(--ui);
+  color: var(--cream);
+}
+
+.profile-link {
+  padding: 0;
+  text-decoration: underline;
+  text-decoration-color: var(--gold-deep);
+  text-underline-offset: 3px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.profile-bonds span {
+  font-size: 12px;
+  color: #9aa6ba;
+}
+
+.profile-plants {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.profile-plants li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 6px;
+  text-align: center;
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+  border-radius: 2px;
+}
+
+.profile-plants svg {
+  width: 48px;
+  height: 48px;
+}
+
+.profile-plants b {
+  font-size: 13px;
+  text-transform: capitalize;
+}
+
+.profile-plants span {
+  font-size: 11px;
+  color: #9aa6ba;
+}
+
+.profile-plants li.growing {
+  border-style: dashed;
+}
+
+.profile-plants li.growing svg {
+  opacity: 0.5;
+}
+
+.profile-notes .rich {
+  font-size: 12px;
+}
+
+/* Formatted text, wherever it is shown */
+/* The body weight sits below the browser's threshold for "already bold", so its bold command
+   switches bold on rather than off; bold itself is then clearly heavier. */
+.rich {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.rich b,
+.rich strong {
+  font-weight: 800;
+}
+
+.rich-item {
+  display: flex;
+  gap: 6px;
+}
+
+.rich-item > em {
+  flex: none;
+  min-width: 9px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.rich-item > div {
+  min-width: 0;
+}
+
+/* The editor: a row of tools over a page you type on */
+.richpad {
+  position: relative;
+}
+
+.richpad-tools {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 7px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(28, 26, 23, 0.2);
+}
+
+.richpad-tools button {
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 24px;
+  padding: 0;
+  font: 700 13px var(--ui);
+  color: #1c1a17;
+  background: none;
+  border: 0;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.richpad-tools button:hover,
+.richpad-tools button.on {
+  background: rgba(28, 26, 23, 0.18);
+}
+
+.richpad-tools svg {
+  width: 16px;
+  height: 16px;
+}
+
+.richpad-page {
+  min-height: 78px;
+  max-height: 150px;
+  overflow-y: auto;
+  font: 500 14px/1.4 var(--ui);
+  color: #1c1a17;
+  white-space: pre-wrap;
+  outline: none;
+  cursor: text;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.richpad-page ul,
+.richpad-page ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.richpad-page blockquote {
+  margin: 0 0 0 18px;
+  padding: 0;
+  border: 0;
+}
+
+.richpad.empty .richpad-page::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  color: rgba(28, 26, 23, 0.5);
+  pointer-events: none;
+}
+
+/* A note up close, with its comments */
+.note-scrim {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(8, 13, 22, 0.7);
+  border-radius: 3px;
+  z-index: 10;
+}
+
+.note-card {
+  display: flex;
+  flex-direction: column;
+  width: min(470px, 100%);
+  max-height: 100%;
+  overflow: hidden;
+  background: var(--panel);
+  border-radius: 3px;
+  box-shadow: var(--edge);
+}
+
+.note-face {
+  flex: 0 1 auto;
+  min-height: 120px;
+  padding: 10px 16px 16px;
+  overflow-y: auto;
+  color: #1c1a17;
+}
+
+.note-face header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: rgba(28, 26, 23, 0.7);
+}
+
+.note-face header span {
+  flex: 1;
+}
+
+.note-face header button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: rgba(28, 26, 23, 0.75);
+  background: none;
+  border: 0;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.note-face header button:hover {
+  color: #1c1a17;
+  background: rgba(28, 26, 23, 0.14);
+}
+
+.note-face header svg {
+  width: 15px;
+  height: 15px;
+}
+
+.note-face > .rich {
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.note-face .mention {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.note-face .richpad-page {
+  max-height: 220px;
+}
+
+.note-edit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.note-edit > span {
+  margin-left: auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(28, 26, 23, 0.6);
+}
+
+.note-edit > button {
+  padding: 6px 13px;
+  font: 700 12px var(--ui);
+  color: #1c1a17;
+  background: rgba(28, 26, 23, 0.14);
+  border: 0;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.note-edit > button.on {
+  color: #fff;
+  background: #1c1a17;
+}
+
+.note-edit > button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.note-edit .over,
+.board-pad > span.over {
+  font-weight: 800;
+  color: #8f1d12;
+}
+
+.note-thread {
+  flex: 1 1 auto;
+  min-height: 96px;
+  margin: 0;
+  padding: 14px 16px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.note-thread li + li {
+  margin-top: 10px;
+}
+
+.note-thread li > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.note-thread b {
+  color: var(--gold);
+}
+
+.note-thread time {
+  font-size: 11px;
+  color: #7f8aa0;
+}
+
+.note-thread p {
+  margin: 1px 0 0;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.note-thread .none {
+  color: #7f8aa0;
+}
+
+.note-thread .named {
+  padding-left: 8px;
+  border-left: 3px solid var(--gold);
+}
+
+.note-reply {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px 16px;
+}
+
+.note-reply input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 13px;
+  font: inherit;
+  color: inherit;
+  background: var(--well);
+  border: 1px solid var(--gold);
+  border-radius: 999px;
+  outline: none;
+}
+
+.note-reply input::placeholder {
+  color: #7f8aa0;
+}
+
+.note-reply .icon-btn:disabled {
+  color: #7f8aa0;
+  background: var(--well);
+  border-color: var(--gold-deep);
+  cursor: default;
+}
+
+.note-reply .mention-list {
+  left: 16px;
+}
+
+/* Panels keep out of each other's way: an open jukebox stops above the map, and the roster and
+   timer stop above the chat, which shrinks to a couple of lines while either is open. */
+.jukebox.open {
+  max-height: calc(100dvh - 262px);
+  overflow-y: auto;
+}
+
+.roster,
+.pomo {
+  max-height: calc(100dvh - 300px);
+  overflow-y: auto;
+}
+
+body:has(.roster) .chat:not(.docked) .chat-log,
+body:has(.pomo) .chat:not(.docked) .chat-log {
+  max-height: 60px;
+}
+
+body:has(.roster) .chat-people,
+body:has(.pomo) .chat-people {
+  max-height: 84px;
 }
 
 .profile-note {

@@ -1,18 +1,22 @@
 import { Room, ServerError, type Client } from 'colyseus'
 import { schema, t, type SchemaType } from '@colyseus/schema'
-import { QUIET_ZONES, ROOMS, SIT_REACH, SPAWN, nearestWalkable, parseYouTubeId, seatById, standSpot, zoneAt, type ZoneId } from '@guildhouse/shared'
+import { MAX_COMMENTS, MAX_COMMENT_LENGTH, MAX_NOTES, MAX_NOTE_LENGTH, NEW_BOND, NOTE_COLORS, QUIET_ZONES, ROOMS, SIT_REACH, SPAWN, isBoard, mentionsIn, nearestWalkable, onBoard, pairKey, parseYouTubeId, seatById, standSpot, zoneAt, type Bond, type Person, type ZoneId } from '@guildhouse/shared'
 import { config, inviteAccepted } from '../config'
-import { MAX_NOTES, MAX_NOTE_LENGTH, NOTE_COLORS, Note, NoteStore, type SavedNote } from '../notes'
+import { db, type ChatLine } from '../db'
+import { Note, NoteStore, fromNote, toComment, toNote } from '../notes'
 import { iceServers } from '../ice'
+import { accrue, cleanOffset, cleanProgress, count, guestKey, newMember, standingOf, type Member } from '../members'
 import * as garden from '../garden'
 import * as juke from '../jukebox'
 import * as pomo from '../pomodoro'
 import * as res from '../reservations'
-import { cleanColor, cleanText, validMove } from '../rules'
+import { cleanBlock, cleanColor, cleanText, validMove } from '../rules'
 
 export const Player = schema(
   {
     name: t.string(),
+    // Who this is across visits and tabs: the account id, or a one-off key for a guest.
+    member: t.string(),
     x: t.number(),
     z: t.number(),
     facing: t.number(),
@@ -26,7 +30,7 @@ export const Player = schema(
     seat: t.string(),
     // Server time this player arrived, so everyone can see how long they have been in.
     joinedAt: t.number(),
-    // Self-reported standing, shown to others. Kept by each browser until there are accounts.
+    // Their standing, shown to others. Counted here on the server.
     level: t.number(),
     totalSeconds: t.number(),
     streak: t.number(),
@@ -34,6 +38,11 @@ export const Player = schema(
     pomodoros: t.number(),
     messages: t.number(),
     days: t.number(),
+    metres: t.number(),
+    songs: t.number(),
+    // When they first joined, and a few words about themselves, for their profile.
+    since: t.number(),
+    about: t.string(),
     // What they are up to right now, in their own words: 'Focusing', 'Back in 5'...
     status: t.string(),
   },
@@ -46,6 +55,12 @@ export type OfficeState = SchemaType<typeof OfficeState>
 
 // Close code sent when the invite code is missing or wrong.
 export const INVITE_REJECTED = 4401
+// Close code sent when this guildhouse has accounts and the client is not signed in.
+export const LOGIN_REJECTED = 4402
+
+// How often each person is told their own progress, and how often it is written down.
+const PUSH_MS = 5000
+const SAVE_MS = 30000
 
 const EMOTES = new Set(['wave', 'heart', 'laugh', 'cheer'])
 
@@ -63,8 +78,49 @@ export class OfficeRoom extends Room {
   private lastGardenSave = 0
   private unplanted = 0
   private adds: Promise<void> = Promise.resolve()
+  // Everyone here now, by member key and by session; and every account that has ever joined.
+  private members = new Map<string, Member>()
+  private bySession = new Map<string, Member>()
+  private people = new Map<string, Person>()
+  // What each pair of people has done together, by pair key; and the pairs changed since the last save.
+  private bonds = new Map<string, Bond>()
+  private bondsChanged = new Set<string>()
+  // Reads and writes of member rows happen one at a time, so a quick leave-and-return cannot read a stale row.
+  private writes: Promise<void> = Promise.resolve()
+  private lastCredit = Date.now()
+  private lastPush = 0
+  private lastSave = Date.now()
 
-  onCreate() {
+  async onCreate() {
+    if (db) for (const person of await db.people()) this.people.set(person.id, person)
+    if (db) this.bonds = await db.bonds()
+    // A person's bonds, strongest first, asked for when their profile is opened.
+    this.onMessage('bonds:of', (client: Client, key: unknown) => typeof key === 'string' && client.send('bonds', this.bondsOf(key)))
+    // Asking someone to be friends. If they had already asked us, this is the yes.
+    this.onMessage('friend:add', (client: Client, key: unknown) => {
+      const me = this.bySession.get(client.sessionId)
+      if (!me || typeof key !== 'string' || key === me.key || !(this.members.has(key) || this.people.has(key))) return
+      const bond = this.bond(me.key, key)
+      if (bond.friends || bond.askedBy === me.key) return
+      if (bond.askedBy === key) {
+        bond.friends = true
+        bond.askedBy = ''
+        this.tell(key, 'friend', { name: me.name, what: 'accepted' })
+      } else {
+        bond.askedBy = me.key
+        this.tell(key, 'friend', { name: me.name, what: 'asked' })
+      }
+      for (const who of [me.key, key]) this.tell(who, 'bonds', this.bondsOf(who))
+    })
+    // Ending a friendship, turning a request down, or taking one back. Nobody is told.
+    this.onMessage('friend:remove', (client: Client, key: unknown) => {
+      const me = this.bySession.get(client.sessionId)
+      if (!me || typeof key !== 'string' || !this.bonds.has(pairKey(me.key, key))) return
+      const bond = this.bond(me.key, key)
+      bond.friends = false
+      bond.askedBy = ''
+      for (const who of [me.key, key]) this.tell(who, 'bonds', this.bondsOf(who))
+    })
     this.onMessage('move', (client: Client, msg: { x: number; z: number; facing: number; moving: boolean }) => {
       const p = this.state.players.get(client.sessionId)
       if (!p || !msg || p.seat) return
@@ -75,6 +131,8 @@ export class OfficeRoom extends Room {
         return
       }
       this.lastMove.set(client.sessionId, now)
+      const member = this.bySession.get(client.sessionId)
+      if (member) count(member, 'metres', Math.hypot(msg.x - p.x, msg.z - p.z))
       p.x = msg.x
       p.z = msg.z
       p.facing = Number.isFinite(msg.facing) ? msg.facing : p.facing
@@ -180,29 +238,94 @@ export class OfficeRoom extends Room {
     })
 
     // Bulletin board
-    for (const saved of this.store.load()) this.state.notes.push(this.toNote(saved))
-    this.onMessage('note:add', (client: Client, m: { text?: unknown; color?: unknown }) => {
+    let saved = db ? await db.notes() : this.store.load()
+    // Moving to Supabase: a board that was kept in a file is carried over once.
+    if (db && !saved.length) {
+      saved = this.store.load().map((n) => ({ ...n, authorId: '', votes: [], mentions: [], comments: [] }))
+      for (const n of saved) void db.putNote(n).catch(warn)
+    }
+    for (const n of saved) this.state.notes.push(toNote(n))
+    const noteById = (id: unknown) => this.state.notes.find((n) => n.id === id)
+    const onTop = () => this.state.notes.reduce((top, n) => Math.max(top, n.z), 0) + 1
+    this.onMessage('note:add', (client: Client, m: { text?: unknown; color?: unknown; board?: unknown; x?: unknown; y?: unknown }) => {
       const p = this.state.players.get(client.sessionId)
-      const text = cleanText(m?.text, MAX_NOTE_LENGTH)
-      if (!p || !text) return
-      while (this.state.notes.length >= MAX_NOTES) this.state.notes.shift()
+      const me = this.bySession.get(client.sessionId)
+      const text = cleanBlock(m?.text, MAX_NOTE_LENGTH)
+      if (!p || !me || !text) return
+      const board = isBoard(m.board) ? m.board : 'fun'
+      const full = this.state.notes.filter((n) => n.board === board)
+      if (full.length >= MAX_NOTES) this.removeNote(full[0].id)
       const now = Date.now()
-      this.state.notes.push(
-        this.toNote({
-          id: `${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-          text,
-          author: p.name,
-          color: NOTE_COLORS.includes(m?.color as string) ? (m.color as string) : NOTE_COLORS[0],
-          at: now,
-        }),
-      )
-      this.saveNotes()
+      const mentions = mentionsIn(text, this.nameable()).filter((key) => key !== me.key)
+      const note = toNote({ id: `${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`, board, text, author: p.name, authorId: me.account ? me.key : '', color: NOTE_COLORS.includes(m.color as string) ? (m.color as string) : NOTE_COLORS[0], x: onBoard(m.x), y: onBoard(m.y), z: onTop(), at: now, votes: [], mentions, comments: [] })
+      this.state.notes.push(note)
+      this.keepNote(note)
+      for (const key of mentions) this.named(me, key, p.name, 'board')
     })
-    this.onMessage('note:remove', (_c: Client, id: unknown) => {
-      const i = this.state.notes.findIndex((n) => n.id === id)
-      if (i < 0) return
-      this.state.notes.splice(i, 1)
-      this.saveNotes()
+    // Only whoever wrote a note can reword it.
+    this.onMessage('note:edit', (client: Client, m: { id?: unknown; text?: unknown; color?: unknown }) => {
+      const p = this.state.players.get(client.sessionId)
+      const me = this.bySession.get(client.sessionId)
+      const note = noteById(m?.id)
+      const text = cleanBlock(m?.text, MAX_NOTE_LENGTH)
+      if (!p || !me || !note || !text || !(me.account ? note.authorId === me.key : !note.authorId && note.author === p.name)) return
+      const before = new Set(note.mentions ? note.mentions.split(' ') : [])
+      const mentions = mentionsIn(text, this.nameable()).filter((key) => key !== me.key)
+      note.text = text
+      note.mentions = mentions.join(' ')
+      if (NOTE_COLORS.includes(m.color as string)) note.color = m.color as string
+      this.keepNote(note)
+      for (const key of mentions) if (!before.has(key)) this.named(me, key, p.name, 'board')
+    })
+    this.onMessage('note:comment', (client: Client, m: { id?: unknown; text?: unknown }) => {
+      const p = this.state.players.get(client.sessionId)
+      const me = this.bySession.get(client.sessionId)
+      const note = noteById(m?.id)
+      const text = cleanText(m?.text, MAX_COMMENT_LENGTH)
+      if (!p || !me || !note || !text || note.comments.length >= MAX_COMMENTS) return
+      const now = Date.now()
+      const mentions = mentionsIn(text, this.nameable()).filter((key) => key !== me.key)
+      const comment = { id: `${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`, author: p.name, authorId: me.account ? me.key : '', text, at: now, mentions }
+      note.comments.push(toComment(comment))
+      if (db) void db.addComment(note.id, comment).catch(warn)
+      else this.store.save(this.state.notes.map(fromNote))
+      for (const key of mentions) this.named(me, key, p.name, 'comment')
+      // Whoever wrote the note hears about it too, unless they were just told by name.
+      if (note.authorId && note.authorId !== me.key && !mentions.includes(note.authorId)) this.tell(note.authorId, 'mention', { name: p.name, where: 'reply' })
+    })
+    // A note follows the pointer for everyone while it is dragged; only where it is dropped is written down.
+    this.onMessage('note:move', (_c: Client, m: { id?: unknown; x?: unknown; y?: unknown; drop?: unknown }) => {
+      const note = noteById(m?.id)
+      if (!note) return
+      note.x = onBoard(m.x, note.x)
+      note.y = onBoard(m.y, note.y)
+      if (note.z < onTop() - 1) note.z = onTop()
+      if (m.drop) this.keepNote(note)
+    })
+    this.onMessage('note:vote', (client: Client, id: unknown) => {
+      const note = noteById(id)
+      const me = this.bySession.get(client.sessionId)
+      if (!note || !me) return
+      const votes = new Set(note.votes ? note.votes.split(' ') : [])
+      if (!votes.delete(me.key)) votes.add(me.key)
+      note.votes = [...votes].join(' ')
+      this.keepNote(note)
+    })
+    this.onMessage('note:remove', (_c: Client, id: unknown) => typeof id === 'string' && this.removeNote(id))
+
+    // Changing your own name, look or introduction. It applies to every tab you have open.
+    this.onMessage('profile:set', (client: Client, m: Record<string, unknown>) => {
+      const me = this.bySession.get(client.sessionId)
+      const mine = this.state.players.get(client.sessionId)
+      if (!me || !mine || !m) return
+      const card = { name: cleanText(m.name, 20) || me.name, robe: cleanColor(m.robe, mine.robe), trim: cleanColor(m.trim, mine.trim), hair: cleanColor(m.hair, mine.hair), hat: m.hat !== false, about: cleanText(m.about, 160) }
+      me.name = card.name
+      me.about = card.about
+      this.state.players.forEach((p) => p.member === me.key && Object.assign(p, card))
+      if (!db || !me.account) return
+      this.people.set(me.key, { id: me.key, name: card.name })
+      this.broadcast('people', [...this.people.values()])
+      this.writes = this.writes.then(() => db!.saveCard(me.key, card)).catch(warn)
     })
 
     this.onMessage('status', (client: Client, raw: unknown) => {
@@ -210,18 +333,26 @@ export class OfficeRoom extends Room {
       if (p) p.status = cleanText(raw, 40)
     })
 
-    this.onMessage('progress', (client: Client, msg: Record<string, unknown>) => {
-      const p = this.state.players.get(client.sessionId)
-      if (p && msg) this.setStanding(p, msg)
-    })
-
+    // Chat: to the room everyone shares, or with `to` straight to one person, here or away.
     this.onMessage('chat', (client: Client, raw: unknown) => {
       const p = this.state.players.get(client.sessionId)
-      const text = cleanText(raw, 240)
+      const me = this.bySession.get(client.sessionId)
+      const m = (typeof raw === 'string' ? { text: raw } : raw) as { text?: unknown; to?: unknown } | null
+      const text = cleanText(m?.text, 240)
       const now = Date.now()
-      if (!p || !text || now - (this.lastChat.get(client.sessionId) ?? 0) < 300) return
+      if (!p || !me || !text || now - (this.lastChat.get(client.sessionId) ?? 0) < 300) return
+      const to = typeof m?.to === 'string' ? m.to : ''
+      if (to && (to === me.key || !(this.members.has(to) || this.people.has(to)))) return
       this.lastChat.set(client.sessionId, now)
-      this.broadcast('chat', { id: client.sessionId, name: p.name, text, at: now })
+      const mentions = mentionsIn(text, this.nameable()).filter((key) => key !== me.key)
+      const line: ChatLine = { id: client.sessionId, from: me.key, name: p.name, text, at: now, to, mentions }
+      if (to) for (const key of new Set([me.key, to])) this.tell(key, 'chat', line)
+      else this.broadcast('chat', line)
+      // A direct message or a mention is something between two people.
+      for (const key of new Set(to ? [to, ...mentions] : mentions)) this.bond(me.key, key).messages++
+      // Guests leave no trace; between accounts every message is kept.
+      if (db && me.account && (!to || this.people.has(to))) void db.addMessage({ ...line, mentions: mentions.filter((key) => this.people.has(key)) }).catch(warn)
+      count(me, 'messages')
     })
 
     this.state.jukebox ??= new juke.Jukebox()
@@ -235,9 +366,11 @@ export class OfficeRoom extends Room {
       if (res.expire(this.state, now)) this.saveReservations()
       res.reopenEmpty(this.state, this.occupied())
       this.tendGarden(timer, now)
+      this.tendMembers(now)
       const finished = pomo.tick(timer, now)
       // Everyone hears the bell; only a finished focus session earns credit.
       if (finished) this.broadcast('pomo:done', { finished, round: timer.round })
+      if (finished === 'focus') for (const member of this.members.values()) count(member, 'pomodoros')
     }, 1000)
 
     this.onMessage('pomo:start', (client: Client, m: { focusMin?: unknown; breakMin?: unknown }) => {
@@ -280,7 +413,9 @@ export class OfficeRoom extends Room {
       // Title lookups take a moment; chaining them keeps the queue in the order people asked.
       this.adds = this.adds.then(async () => {
         const title = await this.lookupTitle(videoId)
-        if (!juke.add(jb, { videoId, title, addedBy }, Date.now())) client.send('juke:error', 'The queue is full.')
+        if (!juke.add(jb, { videoId, title, addedBy }, Date.now())) return client.send('juke:error', 'The queue is full.')
+        const member = this.bySession.get(client.sessionId)
+        if (member) count(member, 'songs')
       })
     })
     this.onMessage('juke:skip', () => juke.skip(jb, Date.now()))
@@ -314,14 +449,102 @@ export class OfficeRoom extends Room {
     return 'YouTube video'
   }
 
-  private toNote(s: SavedNote): Note {
-    const n = new Note()
-    n.id = s.id
-    n.text = s.text
-    n.author = s.author
-    n.color = s.color
-    n.at = s.at
-    return n
+  // Sends to every tab a member has open; nothing happens if they are away.
+  private tell(key: string, type: string, message: unknown) {
+    const sessions = this.members.get(key)?.sessions
+    if (sessions) for (const c of this.clients) if (sessions.has(c.sessionId)) c.send(type, message)
+  }
+
+  // Tells someone they were named on the board, which also counts between the two of them.
+  private named(by: Member, key: string, name: string, where: string) {
+    this.bond(by.key, key).messages++
+    this.tell(key, 'mention', { name, where })
+  }
+
+  // A person's bonds with everyone they have one with.
+  private bondsOf(key: string) {
+    const names = new Map(this.nameable().map((p) => [p.id, p.name]))
+    const list = [...this.bonds].flatMap(([pair, bond]) => {
+      const [a, b] = pair.split(' ')
+      const other = a === key ? b : b === key ? a : ''
+      return other && names.has(other) ? [{ id: other, name: names.get(other)!, ...bond }] : []
+    })
+    return { of: key, list }
+  }
+
+  // The bond between two people, made on first use and marked for saving.
+  private bond(a: string, b: string): Bond {
+    const pair = pairKey(a, b)
+    let bond = this.bonds.get(pair)
+    if (!bond) this.bonds.set(pair, (bond = { ...NEW_BOND }))
+    this.bondsChanged.add(pair)
+    return bond
+  }
+
+  // Everyone who can be named with @: every account, and whoever is here as a guest.
+  private nameable(): Person[] {
+    const all = new Map(this.people)
+    for (const m of this.members.values()) all.set(m.key, { id: m.key, name: m.name })
+    return [...all.values()]
+  }
+
+  private keepNote(note: Note) {
+    if (db) void db.putNote(fromNote(note)).catch(warn)
+    else this.store.save(this.state.notes.map(fromNote))
+  }
+
+  private removeNote(id: string) {
+    const i = this.state.notes.findIndex((n) => n.id === id)
+    if (i < 0) return
+    this.state.notes.splice(i, 1)
+    if (db) void db.removeNote(id).catch(warn)
+    else this.store.save(this.state.notes.map(fromNote))
+  }
+
+  // Time here is credited every second, each person once however many tabs they have open.
+  private tendMembers(now: number) {
+    const elapsed = Math.min((now - this.lastCredit) / 1000, 5)
+    this.lastCredit = now
+    const inCall = new Set<string>()
+    this.state.players.forEach((p) => {
+      const seat = p.seat && seatById(p.seat)
+      if (seat && !QUIET_ZONES.includes(seat.zone)) inCall.add(p.member)
+    })
+    for (const m of this.members.values()) accrue(m, elapsed, inCall.has(m.key), now)
+    // Time together: people seated in the same call, and everyone here during a shared focus session.
+    const together = (keys: string[], what: 'callSeconds' | 'focusSeconds') => {
+      for (let i = 0; i < keys.length; i++) for (let j = i + 1; j < keys.length; j++) this.bond(keys[i], keys[j])[what] += elapsed
+    }
+    const calls = new Map<string, Set<string>>()
+    this.state.players.forEach((p) => {
+      if (inCall.has(p.member) && p.seat) calls.set(p.zone, (calls.get(p.zone) ?? new Set()).add(p.member))
+    })
+    for (const keys of calls.values()) together([...keys], 'callSeconds')
+    const timer = this.state.pomodoro
+    if (timer?.phase === 'focus' && !timer.paused) together([...this.members.keys()], 'focusSeconds')
+    if (now - this.lastPush >= PUSH_MS) {
+      this.lastPush = now
+      for (const m of this.members.values()) this.tell(m.key, 'progress', m.progress)
+      this.state.players.forEach((p) => {
+        const m = this.members.get(p.member)
+        if (m) Object.assign(p, standingOf(m.progress))
+      })
+    }
+    if (now - this.lastSave >= SAVE_MS) {
+      this.lastSave = now
+      this.saveMembers([...this.members.values()])
+    }
+  }
+
+  private saveMembers(members: Member[]) {
+    const rows = members.filter((m) => m.account && m.dirty).map((m) => ({ id: m.key, name: m.name, progress: m.progress }))
+    for (const m of members) m.dirty = false
+    if (!db) return
+    if (rows.length) this.writes = this.writes.then(() => db!.saveMembers(rows, Date.now())).catch(warn)
+    // Bonds are kept between accounts only; a guest's key means nothing tomorrow.
+    const changed = [...this.bondsChanged].filter((pair) => pair.split(' ').every((key) => this.people.has(key))).map((pair): [string, Bond] => [pair, this.bonds.get(pair)!])
+    this.bondsChanged.clear()
+    if (changed.length) this.writes = this.writes.then(() => db!.saveBonds(changed)).catch(warn)
   }
 
   // The door is closed: the knock goes to everyone seated inside.
@@ -362,41 +585,54 @@ export class OfficeRoom extends Room {
     }
   }
 
-  onDispose() {
+  async onDispose() {
     this.gardenStore.save(this.state.garden)
+    this.saveMembers([...this.members.values()])
+    await this.writes
   }
 
   private saveReservations() {
     this.reservations.save(this.state)
   }
 
-  private saveNotes() {
-    this.store.save(this.state.notes.map((n) => ({ id: n.id, text: n.text, author: n.author, color: n.color, at: n.at })))
-  }
-
-  private setStanding(p: Player, from: Record<string, unknown>) {
-    const whole = (v: unknown, max: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(0, Math.floor(v))) : 0)
-    p.level = Math.max(1, whole(from.level, 999))
-    p.totalSeconds = whole(from.totalSeconds, 1e9)
-    p.streak = whole(from.streak, 100000)
-    p.callSeconds = whole(from.callSeconds, 1e9)
-    p.pomodoros = whole(from.pomodoros, 1e6)
-    p.messages = whole(from.messages, 1e7)
-    p.days = whole(from.days, 100000)
-  }
-
-  // The door: with INVITE_CODE set, nobody gets in without it.
-  onAuth(_client: Client, options: Record<string, unknown> = {}) {
+  // The door: with INVITE_CODE set, nobody gets in without it; with accounts, nobody gets in unsigned.
+  async onAuth(_client: Client, options: Record<string, unknown> = {}) {
     if (!inviteAccepted(options?.code)) throw new ServerError(INVITE_REJECTED, 'invite')
-    return true
+    if (!db) return { account: '' }
+    const account = await db.accountOf(options?.token)
+    if (!account) throw new ServerError(LOGIN_REJECTED, 'login')
+    return { account }
   }
 
-  onJoin(client: Client, options: Record<string, unknown> = {}) {
+  // Finds or makes the member behind a session. A first-time account starts from whatever progress
+  // the browser had kept before there were accounts; after that only the server's count matters.
+  private async admit(sessionId: string, account: string, name: string, options: Record<string, unknown>): Promise<Member> {
+    const key = account || guestKey(sessionId)
+    if (account && !this.members.has(key)) {
+      await this.writes
+      const saved = await db!.member(account)
+      // Another tab of theirs may have finished joining while we were reading.
+      if (!this.members.has(key)) this.members.set(key, newMember(key, true, name, saved?.progress ?? cleanProgress(options.carry), saved?.seenAt, saved?.since, saved?.about))
+    }
+    let member = this.members.get(key)
+    if (!member) this.members.set(key, (member = newMember(key, false, name, cleanProgress(options.carry))))
+    member.sessions.add(sessionId)
+    member.tzOffset = cleanOffset(options.tzOffset)
+    if (member.name !== name) member.dirty = true
+    member.name = name
+    this.bySession.set(sessionId, member)
+    return member
+  }
+
+  async onJoin(client: Client, options: Record<string, unknown> = {}, auth?: { account: string }) {
+    const name = cleanText(options.name, 20) || 'Guest'
+    const member = await this.admit(client.sessionId, auth?.account ?? '', name, options)
     const p = new Player()
     // Fan new arrivals out around the spawn tile so they do not stack.
     const n = this.state.players.size
     const spot = nearestWalkable(SPAWN.x + ((n % 3) - 1), SPAWN.z - Math.floor(n / 3) % 3) ?? SPAWN
-    p.name = cleanText(options.name, 20) || 'Guest'
+    p.name = name
+    p.member = member.key
     p.x = spot.x
     p.z = spot.z
     p.facing = 0
@@ -409,12 +645,26 @@ export class OfficeRoom extends Room {
     p.seat = ''
     p.joinedAt = Date.now()
     p.status = cleanText(options.status, 40)
-    this.setStanding(p, options)
+    p.since = member.since
+    p.about = member.about
+    Object.assign(p, standingOf(member.progress))
     this.state.players.set(client.sessionId, p)
     this.lastMove.set(client.sessionId, Date.now())
     client.send('snap', { x: p.x, z: p.z })
+    client.send('me', { member: member.key, account: member.account, seenAt: member.seenAt })
+    client.send('progress', member.progress)
+    client.send('bonds', this.bondsOf(member.key))
     // Call setup servers, including relay credentials, go only to people who are in.
     void iceServers().then((servers) => client.send('ice', servers))
+    if (!db || !member.account) return
+    // The row is written straight away so that notes and messages can point at it.
+    const known = this.people.get(member.key)?.name === name
+    this.people.set(member.key, { id: member.key, name })
+    this.saveMembers([member])
+    this.writes = this.writes.then(() => db!.saveCard(member.key, { robe: p.robe, trim: p.trim, hair: p.hair, hat: p.hat })).catch(warn)
+    if (known) client.send('people', [...this.people.values()])
+    else this.broadcast('people', [...this.people.values()])
+    void this.writes.then(() => db!.history(member.key)).then((lines) => client.send('chat:history', lines), warn)
   }
 
   onLeave(client: Client) {
@@ -423,5 +673,15 @@ export class OfficeRoom extends Room {
     this.lastChat.delete(client.sessionId)
     this.lastRing.delete(client.sessionId)
     this.lastKnock.delete(client.sessionId)
+    const member = this.bySession.get(client.sessionId)
+    this.bySession.delete(client.sessionId)
+    if (!member) return
+    member.sessions.delete(client.sessionId)
+    if (member.sessions.size) return
+    this.members.delete(member.key)
+    member.dirty = true
+    this.saveMembers([member])
   }
 }
+
+const warn = (e: unknown) => console.warn(e instanceof Error ? e.message : e)

@@ -4,7 +4,6 @@ import * as THREE from 'three'
 import { GRID_H, GRID_W, WALK_SPEED, circleFree, route, seatById, zoneAt, type Point } from '@guildhouse/shared'
 import { inReach, input, player, useGame } from '../game'
 import type { AvatarLook } from '../look'
-import { addDistance } from '../stats'
 import { requestSit, standUp, useNet } from '../net/net'
 import { Avatar } from './Avatar'
 import { Label } from './Label'
@@ -31,7 +30,7 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement
+      const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || (e.target instanceof HTMLElement && e.target.isContentEditable)
       if (e.code in KEYS && !typing) held.current.add(e.code)
     }
     const up = (e: KeyboardEvent) => held.current.delete(e.code)
@@ -106,7 +105,6 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
     }
     player.x += dx
     player.z += dz
-    if (dx || dz) addDistance(Math.hypot(dx, dz))
     moving.current = player.moving = Math.hypot(dx, dz) > 1e-4
     if (moving.current) {
       const want = Math.atan2(dx, dz)

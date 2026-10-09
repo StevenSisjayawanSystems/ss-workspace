@@ -184,4 +184,52 @@ export const Icon = {
       <path d="M20 14.500A8 8 0 0 1 9.500 4a8 8 0 1 0 10.500 10.500z" />
     </Svg>
   ),
+  up: () => (
+    <Svg>
+      <path d="M12 19V5M6 11l6-6 6 6" />
+    </Svg>
+  ),
+  people: () => (
+    <Svg>
+      <circle cx="9" cy="8" r="3.5" />
+      <path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.800a3.500 3.500 0 0 1 0 6.400M18 14.500a6 6 0 0 1 3.500 5.500" />
+    </Svg>
+  ),
+  message: () => (
+    <Svg>
+      <path d="M4 5h16v11H10l-5 4v-4H4z" />
+    </Svg>
+  ),
+  edit: () => (
+    <Svg>
+      <path d="M4 20l1-4.500L16.500 4l3.500 3.500L8.500 19z" />
+      <path d="M14 6.500l3.500 3.500" />
+    </Svg>
+  ),
+  bullets: () => (
+    <Svg>
+      <path d="M9 7h11M9 12h11M9 17h11" />
+      <path d="M4.500 7h.010M4.500 12h.010M4.500 17h.010" strokeWidth="2.6" />
+    </Svg>
+  ),
+  numbers: () => (
+    <Svg>
+      <path d="M10 7h10M10 12h10M10 17h10M4 5.500l1.500-.500V9M4 14.500h2.500L4 18h2.500" />
+    </Svg>
+  ),
+  indent: () => (
+    <Svg>
+      <path d="M4 5h16M11 10h9M11 14h9M4 19h16M4 9.500l3.500 2.500L4 14.500z" />
+    </Svg>
+  ),
+  outdent: () => (
+    <Svg>
+      <path d="M4 5h16M11 10h9M11 14h9M4 19h16M7.500 9.500L4 12l3.500 2.500z" />
+    </Svg>
+  ),
+  trash: () => (
+    <Svg>
+      <path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v5M14 11v5" />
+    </Svg>
+  ),
 }

@@ -1,19 +1,22 @@
 import { Client, type Room } from '@colyseus/sdk'
 import { create } from 'zustand'
-import { QUIET_ZONES, SEATS, roomById, seatById, standSpot, type Seat, type ZoneId } from '@guildhouse/shared'
+import { QUIET_ZONES, SEATS, isBoard, roomById, seatById, standSpot, type BoardId, type BondWith, type Person, type Progress, type Seat, type ZoneId } from '@guildhouse/shared'
+import { accessToken } from '../account'
 import { inReach, player, saveStatus, useGame, walkToSeat, type Profile } from '../game'
 import { DEFAULT_LOOK, type AvatarLook } from '../look'
-import { bell, knockSound, ringtone } from '../sound'
-import { announce, count, standing, type Standing } from '../stats'
+import { bell, knockSound, pat, ping, ringtone } from '../sound'
+import { announce, carried, receive } from '../stats'
 
 // Other players. `tx/tz/tfacing` are the latest server values; `x/z/facing` are what is drawn and ease towards them.
 export interface Remote {
   id: string
   name: string
+  // Who they are across visits and tabs; direct messages and mentions go by this.
+  member: string
   look: AvatarLook
   zone: string
   seat: string
-  // Server time they arrived, and their self-reported standing.
+  // Server time they arrived, and their standing.
   joinedAt: number
   level: number
   totalSeconds: number
@@ -22,6 +25,11 @@ export interface Remote {
   pomodoros: number
   messages: number
   days: number
+  metres: number
+  songs: number
+  // When they first joined, and what they say about themselves.
+  since: number
+  about: string
   status: string
   x: number
   z: number
@@ -33,12 +41,20 @@ export interface Remote {
 }
 export const remotes = new Map<string, Remote>()
 
+// `to` is empty for the room everyone shares, otherwise the member a direct message is for.
 export interface ChatLine {
+  // Session that sent it, when it arrived live; empty for history.
   id: string
+  from: string
   name: string
   text: string
   at: number
+  to: string
+  mentions: string[]
 }
+
+// The conversation a line belongs to: '' for the room, otherwise the other person's member key.
+export const talkOf = (line: ChatLine, me: string) => (line.to ? (line.from === me ? line.to : line.from) : '')
 
 export const EMOTES = { wave: '👋', heart: '❤️', laugh: '😂', cheer: '🎉' } as const
 export type Emote = keyof typeof EMOTES
@@ -80,12 +96,31 @@ export interface Ring {
   zone: ZoneId
 }
 
+export interface CommentItem {
+  id: string
+  author: string
+  authorId: string
+  text: string
+  at: number
+  mentions: string[]
+}
+
 export interface NoteItem {
   id: string
+  board: BoardId
   text: string
   author: string
+  // Account of whoever wrote it, or '' for a guest.
+  authorId: string
+  comments: CommentItem[]
   color: string
+  // Centre of the note as a fraction of the board; the highest z lies on top.
+  x: number
+  y: number
+  z: number
   at: number
+  votes: string[]
+  mentions: string[]
 }
 
 export interface BookingItem {
@@ -111,6 +146,22 @@ interface NetState {
   bookings: BookingItem[]
   closed: Record<string, string>
   knock: Knock | null
+  // Our own member key, whether it is an account, and when we were last here before this visit.
+  me: string
+  account: boolean
+  seenAt: number
+  // When we first joined, and our own introduction.
+  since: number
+  about: string
+  // Every account that has ever joined, here or away.
+  people: Person[]
+  // Bonds we have been told about, by whose they are. Our own are kept up to date.
+  bonds: Record<string, BondWith[]>
+  // The conversation the chat is showing ('' is the room), and unread counts per conversation.
+  // The room counts only messages that name us.
+  talk: string
+  talks: string[]
+  unread: Record<string, number>
   // Bulletin board notes, oldest first; and what each other person says they are up to.
   notes: NoteItem[]
   statuses: Record<string, string>
@@ -118,6 +169,8 @@ interface NetState {
   ringing: Ring | null
   // Set when the server turned us away for lack of an invite code after we were already inside.
   inviteNeeded: boolean
+  // Likewise when it would not take our sign-in.
+  loginNeeded: boolean
   // True while we are seated in a room that has a call; `call` lists the others seated in that room.
   inCall: boolean
   call: string[]
@@ -137,9 +190,10 @@ interface NetState {
 
 const NO_MUSIC: JukeState = { queue: [], startedAt: 0, paused: false, pausedAt: 0 }
 
-export const useNet = create<NetState>(() => ({ inviteNeeded: false, garden: [], desks: {}, bookings: [], closed: {}, knock: null, notes: [], statuses: {}, pomo: NO_TIMER, ringing: null, inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
+export const useNet = create<NetState>(() => ({ me: '', account: false, seenAt: 0, since: 0, about: '', people: [], bonds: {}, talk: '', talks: [], unread: {}, loginNeeded: false, inviteNeeded: false, garden: [], desks: {}, bookings: [], closed: {}, knock: null, notes: [], statuses: {}, pomo: NO_TIMER, ringing: null, inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
 
 const SEND_MS = 80
+const MAX_CHAT = 400
 const CONNECT_TIMEOUT_MS = 8000
 const SERVER_URL: string = import.meta.env.VITE_SERVER_URL ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.hostname}:2567`
 
@@ -149,8 +203,9 @@ let clockTimer: ReturnType<typeof setInterval> | undefined
 let retryTimer: ReturnType<typeof setTimeout> | undefined
 let inviteCode = ''
 
-// Close code the server uses when the invite code is missing or wrong.
+// Close codes the server uses when the invite code is missing or wrong, and when sign-in is needed.
 const INVITE_REJECTED = 4401
+const LOGIN_REJECTED = 4402
 
 // Servers used to set up calls. The game server replaces these on join, adding a relay when one is configured.
 export const ice: { servers: RTCIceServer[] } = { servers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }] }
@@ -189,7 +244,9 @@ const sameList = (a: string[], b: string[]) => a.length === b.length && a.every(
 // Our own seat comes from the server, which is what stops two people taking the same chair.
 let ignoreSeatUntil = 0
 function syncSelf(me: any) {
-  if (me.joinedAt && useNet.getState().selfJoinedAt !== me.joinedAt) useNet.setState({ selfJoinedAt: me.joinedAt })
+  const net = useNet.getState()
+  if (me.joinedAt && net.selfJoinedAt !== me.joinedAt) useNet.setState({ selfJoinedAt: me.joinedAt })
+  if (net.since !== me.since || net.about !== me.about) useNet.setState({ since: me.since ?? 0, about: me.about ?? '' })
   const game = useGame.getState()
   const serverSeat: string | null = me.seat || null
   if (serverSeat === game.seat) return
@@ -234,9 +291,16 @@ function syncCall() {
 let notesKey = ''
 function syncNotes(state: any) {
   const notes: NoteItem[] = []
-  state.notes?.forEach((n: any) => notes.push({ id: n.id, text: n.text, author: n.author, color: n.color, at: n.at }))
+  const keys = (list: string) => (list ? list.split(' ') : [])
+  state.notes?.forEach((n: any) => {
+    const comments: CommentItem[] = []
+    n.comments?.forEach((c: any) => comments.push({ id: c.id, author: c.author, authorId: c.authorId, text: c.text, at: c.at, mentions: keys(c.mentions) }))
+    notes.push({ id: n.id, board: isBoard(n.board) ? n.board : 'fun', text: n.text, author: n.author, authorId: n.authorId, comments, color: n.color, x: n.x, y: n.y, z: n.z, at: n.at, votes: keys(n.votes), mentions: keys(n.mentions) })
+  })
   const key = JSON.stringify(notes)
   if (key === notesKey) return
+  // A note going up makes a sound, though not the ones already there when we walk in.
+  if (notesKey && notes.some((n) => !useNet.getState().notes.some((old) => old.id === n.id))) pat()
   notesKey = key
   useNet.setState({ notes })
 }
@@ -286,6 +350,9 @@ function syncPomodoro(state: any) {
   useNet.setState({ pomo })
 }
 
+// Bumped when someone already here changes their name or look, so lists and avatars redraw.
+let cast = 0
+let drawn = 0
 function syncPlayers(state: any, selfId: string) {
   const seen = new Set<string>()
   const me = state.players?.get(selfId)
@@ -295,6 +362,15 @@ function syncPlayers(state: any, selfId: string) {
     seen.add(id)
     const r = remotes.get(id)
     if (r) {
+      // A profile can be edited while its owner is here.
+      if (r.name !== p.name || r.look.robe !== p.robe || r.look.hair !== p.hair || r.look.hat !== p.hat) {
+        r.name = p.name
+        r.look = { ...r.look, robe: p.robe, trim: p.trim, hair: p.hair, hat: p.hat }
+        cast++
+      }
+      r.metres = p.metres
+      r.songs = p.songs
+      r.about = p.about
       r.tx = p.x
       r.tz = p.z
       r.tfacing = p.facing
@@ -313,6 +389,7 @@ function syncPlayers(state: any, selfId: string) {
       remotes.set(id, {
         id,
         name: p.name,
+        member: p.member,
         look: { ...DEFAULT_LOOK, robe: p.robe, trim: p.trim, hair: p.hair, hat: p.hat },
         zone: p.zone,
         seat: p.seat,
@@ -324,6 +401,10 @@ function syncPlayers(state: any, selfId: string) {
         pomodoros: p.pomodoros,
         messages: p.messages,
         days: p.days,
+        metres: p.metres,
+        songs: p.songs,
+        since: p.since,
+        about: p.about,
         status: p.status,
         x: p.x, z: p.z, facing: p.facing,
         tx: p.x, tz: p.z, tfacing: p.facing,
@@ -334,7 +415,10 @@ function syncPlayers(state: any, selfId: string) {
   for (const id of remotes.keys()) if (!seen.has(id)) remotes.delete(id)
   const ids = [...remotes.keys()]
   const prev = useNet.getState().ids
-  if (ids.length !== prev.length || ids.some((id, i) => id !== prev[i])) useNet.setState({ ids })
+  if (ids.length !== prev.length || ids.some((id, i) => id !== prev[i]) || cast !== drawn) {
+    drawn = cast
+    useNet.setState({ ids })
+  }
   syncCall()
 }
 
@@ -355,16 +439,18 @@ function disconnected(profile: Profile) {
   retryTimer = setTimeout(async () => {
     // If a background retry is refused for the invite code, wandering around alone forever helps nobody:
     // go back to the title screen, which asks for the code.
-    if ((await connect(profile, inviteCode)) === 'invite' && useGame.getState().profile) {
-      useNet.setState({ inviteNeeded: true })
+    const result = await connect(profile, inviteCode)
+    if ((result === 'invite' || result === 'login') && useGame.getState().profile) {
+      useNet.setState(result === 'invite' ? { inviteNeeded: true } : { loginNeeded: true })
       useGame.setState({ profile: null })
     }
   }, 3000)
 }
 
 // Joins the shared office. If the server is unreachable the office still works solo and we keep retrying.
-// Resolves to 'online', to 'invite' when the server wants an invite code we did not supply, or to 'offline'.
-export async function connect(profile: Profile, code = ''): Promise<'online' | 'invite' | 'offline'> {
+// Resolves to 'online', to 'invite' when the server wants an invite code we did not supply, to 'login'
+// when it wants us signed in, or to 'offline'.
+export async function connect(profile: Profile, code = ''): Promise<'online' | 'invite' | 'login' | 'offline'> {
   if (room) return 'online'
   if (useNet.getState().status === 'connecting') return 'offline'
   inviteCode = code
@@ -372,9 +458,10 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
   useNet.setState({ status: 'connecting' })
   try {
     const { robe, trim, hair, hat } = profile.look
+    const token = await accessToken()
     // An unreachable server can leave the browser waiting a long time; give up after a few seconds
     // so the title screen never hangs, and drop the connection if it turns up late.
-    const attempt = new Client(SERVER_URL).joinOrCreate<any>('office', { name: profile.name, robe, trim, hair, hat, code, status: useGame.getState().status, ...standing() })
+    const attempt = new Client(SERVER_URL).joinOrCreate<any>('office', { name: profile.name, robe, trim, hair, hat, code, token, status: useGame.getState().status, carry: carried(), tzOffset: new Date().getTimezoneOffset() })
     const joined = await Promise.race([
       attempt,
       new Promise<never>((_, reject) =>
@@ -415,10 +502,8 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
     joined.onMessage('pomo:done', (m: { finished: 'focus' | 'break' | 'timer' }) => {
       bell(m.finished !== 'break')
       if (m.finished === 'timer') announce("Time's up", 'Timer finished')
-      else if (m.finished === 'focus') {
-        count('pomodoros')
-        announce('Break time', 'Focus session complete')
-      } else announce('Back to focus', 'Break is over')
+      else if (m.finished === 'focus') announce('Break time', 'Focus session complete')
+      else announce('Back to focus', 'Break is over')
     })
     joined.onMessage('notice', (m: { title: string; detail: string }) => announce(m.title, m.detail))
     joined.onMessage('knock', (m: Knock) => {
@@ -448,9 +533,63 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
     })
     joined.onMessage('rtc', (m: { from: string; data: unknown }) => rtcHandler?.(m.from, m.data))
     joined.onMessage('snap', (m: { x: number; z: number }) => useGame.getState().snapTo(m.x, m.z))
+    // Who we are to the server, then our progress as it counts it.
+    let arriving = true
+    joined.onMessage('me', (m: { member: string; account: boolean; seenAt: number }) => {
+      arriving = true
+      useNet.setState({ me: m.member, account: m.account, seenAt: m.seenAt })
+    })
+    joined.onMessage('progress', (p: Progress) => {
+      receive(p, useNet.getState().account, arriving)
+      arriving = false
+    })
+    joined.onMessage('people', (people: Person[]) => useNet.setState({ people }))
+    joined.onMessage('chat:history', (lines: ChatLine[]) => {
+      const { me, seenAt, talk } = useNet.getState()
+      const unread: Record<string, number> = {}
+      const talks = new Set(useNet.getState().talks)
+      for (const line of lines) {
+        const t = talkOf(line, me)
+        if (t) talks.add(t)
+        // Anything for us since we were last here is waiting to be read.
+        if (line.from !== me && line.at > seenAt && t !== talk && (t || line.mentions.includes(me))) unread[t] = (unread[t] ?? 0) + 1
+      }
+      useNet.setState({ chat: lines.slice(-MAX_CHAT), unread, talks: [...talks] })
+      const waiting = Object.values(unread).reduce((a, b) => a + b, 0)
+      if (waiting) announce('While you were away', `${waiting} ${waiting === 1 ? 'message is' : 'messages are'} waiting for you`)
+    })
+    joined.onMessage('mention', (m: { name: string; where: string }) => {
+      ping()
+      announce(m.name, m.where === 'reply' ? 'commented on your note' : m.where === 'comment' ? 'named you in a comment' : 'named you on the bulletin board')
+    })
+    let greeted = false
+    joined.onMessage('bonds', (m: { of: string; list: BondWith[] }) => {
+      useNet.setState((s) => ({ bonds: { ...s.bonds, [m.of]: m.list } }))
+      // The first word about our own bonds is the moment to mention requests that came while we were away.
+      if (greeted || m.of !== useNet.getState().me) return
+      greeted = true
+      const asking = m.list.filter((b) => b.askedBy === b.id)
+      if (asking.length) announce(asking.length === 1 ? asking[0].name : `${asking.length} people`, asking.length === 1 ? 'wants to be friends' : 'want to be friends')
+    })
+    joined.onMessage('friend', (m: { name: string; what: 'asked' | 'accepted' }) => {
+      ping()
+      announce(m.name, m.what === 'asked' ? 'wants to be friends' : 'is now your friend')
+    })
     joined.onMessage('chat', (m: ChatLine) => {
-      useNet.setState((s) => ({ chat: [...s.chat.slice(-49), m] }))
-      bubble(m.id, m.text.length > 70 ? `${m.text.slice(0, 68)}…` : m.text, 5000)
+      const { me, talk } = useNet.getState()
+      const t = talkOf(m, me)
+      const forMe = m.from !== me && (!!t || m.mentions.includes(me))
+      useNet.setState((s) => ({
+        chat: [...s.chat.slice(1 - MAX_CHAT), m],
+        talks: t && !s.talks.includes(t) ? [...s.talks, t] : s.talks,
+        unread: forMe && t !== talk ? { ...s.unread, [t]: (s.unread[t] ?? 0) + 1 } : s.unread,
+      }))
+      if (forMe) {
+        ping()
+        if (t !== talk) announce(m.name, t ? 'sent you a message' : 'mentioned you')
+      }
+      // Speech bubbles are for what is said out loud in the room.
+      if (!m.to) bubble(m.id, m.text.length > 70 ? `${m.text.slice(0, 68)}…` : m.text, 5000)
     })
     joined.onMessage('emote', (m: { id: string; emote: Emote }) => bubble(m.id, EMOTES[m.emote] ?? '', 2500))
     joined.onLeave(() => disconnected(profile))
@@ -468,10 +607,11 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
     }, SEND_MS)
     return 'online'
   } catch (e) {
-    if ((e as { code?: number })?.code === INVITE_REJECTED) {
-      // Retrying would only be refused again; the title screen asks for the code instead.
+    const refused = (e as { code?: number })?.code
+    if (refused === INVITE_REJECTED || refused === LOGIN_REJECTED) {
+      // Retrying would only be refused again; the title screen asks for what is missing instead.
       useNet.setState({ status: 'offline' })
-      return 'invite'
+      return refused === INVITE_REJECTED ? 'invite' : 'login'
     }
     disconnected(profile)
     return 'offline'
@@ -578,8 +718,31 @@ export function answerKnock(accept: boolean) {
 }
 
 export const board = {
-  add: (text: string, color: string) => room?.send('note:add', { text, color }),
+  add: (note: { text: string; color: string; board: BoardId; x: number; y: number }) => room?.send('note:add', note),
+  // `drop` is the end of a drag, which is when the server writes the place down.
+  move: (id: string, x: number, y: number, drop: boolean) => room?.send('note:move', { id, x, y, drop }),
+  vote: (id: string) => room?.send('note:vote', id),
+  // Only the note's author can edit it; the server checks.
+  edit: (id: string, text: string, color: string) => room?.send('note:edit', { id, text, color }),
+  comment: (id: string, text: string) => room?.send('note:comment', { id, text }),
   remove: (id: string) => room?.send('note:remove', id),
+}
+
+// Asks for someone's bonds; the answer arrives in `bonds` under their key.
+export const askBonds = (key: string) => room?.send('bonds:of', key)
+
+export const friends = {
+  // Asks to be friends, or says yes to someone who asked first.
+  add: (key: string) => room?.send('friend:add', key),
+  // Ends a friendship, declines a request, or takes one back.
+  remove: (key: string) => room?.send('friend:remove', key),
+}
+
+// Changes our own name, look and introduction, here and on the account.
+export function saveCard(profile: Profile, about: string) {
+  useGame.getState().enter(profile)
+  const { robe, trim, hair, hat } = profile.look
+  room?.send('profile:set', { name: profile.name, robe, trim, hair, hat, about })
 }
 
 // Tells everyone what you are up to; an empty string clears it.
@@ -606,19 +769,34 @@ export const onRtc = (handler: (from: string, data: any) => void) => {
 export const sendRtc = (to: string, data: unknown) => room?.send('rtc', { to, data })
 export const callZone = (): ZoneId | null => seatById(useGame.getState().seat ?? '')?.zone ?? null
 
-export const sendChat = (text: string) => {
-  if (!room) return
-  room.send('chat', text)
-  count('messages')
+// Says something in the conversation the chat is showing.
+export const sendChat = (text: string) => room?.send('chat', { text, to: useNet.getState().talk })
+
+// Turns the chat to a conversation: '' for the room, or a member key for a direct message.
+export function openTalk(talk: string) {
+  useNet.setState((s) => {
+    const { [talk]: _, ...unread } = s.unread
+    return { talk, unread, talks: talk && !s.talks.includes(talk) ? [...s.talks, talk] : s.talks }
+  })
 }
-export const sendProgress = (s: Standing) => room?.send('progress', s)
+export const closeTalk = (talk: string) => useNet.setState((s) => ({ talks: s.talks.filter((t) => t !== talk), talk: s.talk === talk ? '' : s.talk }))
+
+// Everyone who can be named or messaged: every account, plus whoever is here now. `here` marks the latter.
+export function everyone(): (Person & { here: boolean })[] {
+  const { people, me } = useNet.getState()
+  const all = new Map<string, Person & { here: boolean }>()
+  for (const p of people) all.set(p.id, { ...p, here: p.id === me })
+  for (const r of remotes.values()) if (r.member) all.set(r.member, { id: r.member, name: r.name, here: true })
+  const mine = useGame.getState().profile?.name
+  if (me && mine) all.set(me, { id: me, name: mine, here: true })
+  return [...all.values()].sort((a, b) => Number(b.here) - Number(a.here) || a.name.localeCompare(b.name))
+}
 export const sendEmote = (emote: Emote) => room?.send('emote', emote)
 
 export const jukebox = {
   add: (url: string) => {
     if (!room) return
     room.send('juke:add', url)
-    count('songs')
   },
   skip: () => room?.send('juke:skip'),
   remove: (id: string) => room?.send('juke:remove', id),
@@ -628,7 +806,7 @@ export const jukebox = {
   duration: (id: string, duration: number) => room?.send('juke:duration', { id, duration }),
 }
 
-if (import.meta.env.DEV) Object.assign((window as any).__game, { net: { useNet, remotes, jukebox, sendChat, sendEmote, requestSit, standUp, connect, ringPerson, answerRing, pomodoro, board, setStatus, desks, rooms, answerKnock } })
+if (import.meta.env.DEV) Object.assign((window as any).__game, { net: { useNet, remotes, jukebox, sendChat, sendEmote, requestSit, standUp, connect, ringPerson, answerRing, pomodoro, board, setStatus, desks, rooms, answerKnock, openTalk } })
 
 // This module owns a live connection, so a hot update cannot be applied in place.
 import.meta.hot?.dispose(() => {

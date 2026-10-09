@@ -14,13 +14,26 @@ pnpm dev
 
 `pnpm test` runs the tests; `pnpm typecheck` and `pnpm build` check and build everything.
 
+### Accounts, locally
+
+Sign-in, saved progress, the bulletin board and chat history live in Supabase. With Docker running:
+
+```sh
+supabase start        # API on :54521, Studio on http://127.0.0.1:54523
+```
+
+Then copy `.env.example` to `.env` and fill the four Supabase settings from what `supabase start` prints (the Project URL, the secret key for the server, the publishable key for the web app). Both the server and the web app read that one file. Without it everything still runs: people join as guests and their progress stays in their browser.
+
+Database changes are migrations in `supabase/migrations`; `supabase migration up` applies new ones.
+
 ## Layout
 
 | Path | What it is |
 |---|---|
 | `apps/web` | The browser app (Vite, React, three.js) |
 | `apps/server` | The game server (Colyseus): movement, chat, seats, jukebox, call handshakes |
-| `packages/shared` | Floor plan, seats and pathfinding, used by both |
+| `packages/shared` | Floor plan, seats, pathfinding, levels and mentions, used by both |
+| `supabase` | Local Supabase settings and the database migrations |
 
 The floor plan is data: rooms, doors and furniture live in `packages/shared/src/office.ts`.
 
@@ -51,9 +64,17 @@ With Cloudflare: in the dashboard open Realtime, TURN Server, create a TURN key,
 
 Any other provider works through `TURN_URLS`, `TURN_USERNAME` and `TURN_CREDENTIAL`.
 
+### Accounts and saved progress
+
+1. Create a Supabase project and apply the migrations: `supabase link`, then `supabase db push`.
+2. On Railway set `SUPABASE_URL` and `SUPABASE_SECRET_KEY`. The deploy log confirms with `Sign-in required`.
+3. On Vercel set `VITE_SUPABASE_URL` and `VITE_SUPABASE_KEY` (the publishable key) and redeploy.
+
+People make an account with an email and password on the title screen. Supabase asks new accounts to confirm their email by default; turn that off under Authentication, Sign In / Providers, Email if you would rather they get straight in. Only the game server writes to the database; a browser can read its own member row and nothing else.
+
 ### Keeping notes, desks and bookings
 
-Bulletin board notes, desk claims, the meeting room schedule and everyone's Focus Garden hours are saved to small files. Railway's disk is wiped on every deploy, so to keep them: on the server service add a Volume mounted at `/data`, then set the variable `DATA_DIR=/data`. The deploy log confirms with `Notes are kept in /data`. If it instead warns that something could not be saved, the volume is not writable by the server's user; setting `RAILWAY_RUN_UID=0` on the service is the usual fix.
+Desk claims, the meeting room schedule and everyone's Focus Garden hours are saved to small files (so is the bulletin board, when there is no Supabase). Railway's disk is wiped on every deploy, so to keep them: on the server service add a Volume mounted at `/data`, then set the variable `DATA_DIR=/data`. The deploy log confirms with `Notes are kept in /data`. If it instead warns that something could not be saved, the volume is not writable by the server's user; setting `RAILWAY_RUN_UID=0` on the service is the usual fix.
 
 ### Inviting people
 
