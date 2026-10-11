@@ -57,9 +57,7 @@ function useWalls() {
           hedgeTop.push({ p: [x, HEDGE, z], s: [0.86, 0.16, 0.86] })
         }
         if (t !== 'wall') continue
-        // The camera sits to the south-east, so only walls with nothing behind them can stand full height.
         const h = open(x - 1, z) || open(x, z - 1) || open(x - 1, z - 1) ? LOW : TALL
-        // A post at the tile centre plus an arm towards each neighbouring wall or door keeps walls slim.
         const parts: [number, number, number, number][] = skip.has(`${x},${z}`) ? [] : [[x, z, THICK, THICK]]
         const arm = 0.5 - THICK / 2
         for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
@@ -68,7 +66,6 @@ function useWalls() {
           const off = THICK / 2 + arm / 2
           parts.push([x + dx * off, z + dz * off, dx ? arm : THICK, dz ? arm : THICK])
         }
-        // Half-timbering on the room-facing side of the tall back walls: a post every other tile and a rail.
         if (h === TALL) {
           const face = THICK / 2 + 0.025
           if (open(x, z + 1) || open(x + 1, z + 1) || open(x - 1, z + 1)) {
@@ -90,7 +87,6 @@ function useWalls() {
   }, [])
 }
 
-// The dollhouse view removes the roof over the rooms; what remains is the far slope behind the two back walls.
 function Roof() {
   const indoor = ROOMS.filter((r) => !r.outdoor)
   const x1 = Math.max(...indoor.map((r) => r.x1)) + 1
@@ -122,14 +118,12 @@ function Roof() {
 }
 
 function Floor({ room }: { room: Room }) {
-  // Half a tile wider on every side so the floor runs under the surrounding walls.
   const w = room.x1 - room.x0 + 2
   const d = room.z1 - room.z0 + 2
   const mat = useMemo(
     () => new THREE.MeshToonMaterial({ map: floorTexture(room.floor, w, d), gradientMap: toonRamp }),
     [room.floor, w, d],
   )
-  // The room you are standing in is fully lit; the others sit back a little.
   useFrame((_, dt) => {
     const target = useGame.getState().zone === room.id ? 1 : 0.74
     const v = THREE.MathUtils.damp(mat.color.r, target, 6, dt)
@@ -145,7 +139,6 @@ function Floor({ room }: { room: Room }) {
 function Door({ x, z, locked = false }: { x: number; z: number; locked?: boolean }) {
   const leaf = useRef<THREE.Group>(null!)
   const alongX = tileAt(x - 1, z) !== 'floor' && tileAt(x + 1, z) !== 'floor'
-  // The room this door leads into (the one to its north), if someone inside has closed it.
   const zone = zoneAt(x, z - 1)
   const shut = useNet((s) => !!zone && !!s.closed[zone])
   useFrame((_, dt) => {
@@ -165,9 +158,6 @@ function Door({ x, z, locked = false }: { x: number; z: number; locked?: boolean
       <mesh position={[0, 2.06, 0]} material={toon(PAL.woodDark)} castShadow>
         <boxGeometry args={[1.2, 0.2, 0.58]} />
       </mesh>
-      <mesh position={[0, 2.3, 0]} material={glow('#ffd98a', 1.5)}>
-        <sphereGeometry args={[0.09, 10, 8]} />
-      </mesh>
       <group ref={leaf} position={[-0.39, 0, 0]}>
         <mesh position={[0.39, 0.92, 0]} material={toon(locked || shut ? PAL.red : PAL.teal)} castShadow>
           <boxGeometry args={[0.78, 1.84, 0.1]} />
@@ -175,6 +165,63 @@ function Door({ x, z, locked = false }: { x: number; z: number; locked?: boolean
         <mesh position={[0.66, 0.9, 0.08]} material={toon(PAL.brass)}>
           <sphereGeometry args={[0.06, 8, 6]} />
         </mesh>
+      </group>
+    </group>
+  )
+}
+
+function DoorKnob({ x }: { x: number }) {
+  return (
+    <mesh position={[x, 0.95, 0.085]} material={toon(PAL.brass)}>
+      <sphereGeometry args={[0.055, 8, 6]} />
+    </mesh>
+  )
+}
+
+function GardenDoubleEntrance() {
+  const leftLeaf = useRef<THREE.Group>(null!)
+  const rightLeaf = useRef<THREE.Group>(null!)
+  const x = 24
+  const z = 11.5
+
+  useFrame((_, dt) => {
+    const near = Math.hypot(player.x - x, player.z - z) < 2.4
+    const angle = near ? 1.35 : 0
+    leftLeaf.current.rotation.y = THREE.MathUtils.damp(leftLeaf.current.rotation.y, angle, 8, dt)
+    rightLeaf.current.rotation.y = THREE.MathUtils.damp(rightLeaf.current.rotation.y, -angle, 8, dt)
+  })
+
+  const doorMaterial = toon('#8b5a3c')
+  const frameMaterial = toon(PAL.woodDark)
+
+  return (
+    <group position={[x, 0, z]} rotation-y={Math.PI / 2}>
+      <mesh position={[0, 0.005, 0]} rotation-x={-Math.PI / 2} material={toon(PAL.wood)} receiveShadow>
+        <planeGeometry args={[2, 1]} />
+      </mesh>
+
+      {[-0.96, 0.96].map((px) => (
+        <mesh key={px} position={[px, 1, 0]} material={frameMaterial} castShadow>
+          <boxGeometry args={[0.14, 2, 0.52]} />
+        </mesh>
+      ))}
+
+      <mesh position={[0, 2.06, 0]} material={frameMaterial} castShadow>
+        <boxGeometry args={[2.2, 0.2, 0.58]} />
+      </mesh>
+
+      <group ref={leftLeaf} position={[-0.87, 0, 0]}>
+        <mesh position={[0.435, 0.95, 0]} material={doorMaterial} castShadow>
+          <boxGeometry args={[0.87, 1.9, 0.09]} />
+        </mesh>
+        <DoorKnob x={0.695} />
+      </group>
+
+      <group ref={rightLeaf} position={[0.87, 0, 0]}>
+        <mesh position={[-0.435, 0.95, 0]} material={doorMaterial} castShadow>
+          <boxGeometry args={[0.87, 1.9, 0.09]} />
+        </mesh>
+        <DoorKnob x={-0.695} />
       </group>
     </group>
   )
@@ -242,9 +289,10 @@ export function Building() {
       <Roof />
       <Boxes items={walls.hedge} color={PAL.hedge} />
       <Boxes items={walls.hedgeTop} color={PAL.leafLight} />
-      {DOORS.map((d) => (
+      {DOORS.filter((d) => !(d.x === 24 && (d.z === 11 || d.z === 12))).map((d) => (
         <Door key={`${d.x},${d.z}`} x={d.x} z={d.z} />
       ))}
+      <GardenDoubleEntrance />
       {WALL_DECOR.map((d) =>
         d.type === 'frontDoor' ? (
           <Door key={`${d.x},${d.z}`} x={d.x} z={d.z} locked />
