@@ -1,4 +1,4 @@
-import { CATEGORY_COLORS, MAX_CATEGORIES, MAX_CATEGORY_NAME, MAX_LISTS, MAX_LIST_NAME, MAX_TASKS, MAX_TASK_LENGTH, type Task, type TaskCategory, type TaskSession } from '@guildhouse/shared'
+import { CATEGORY_COLORS, PRIORITIES, isDay, MAX_CATEGORIES, MAX_CATEGORY_NAME, MAX_LISTS, MAX_LIST_NAME, MAX_TASKS, MAX_TASK_LENGTH, type Task, type TaskCategory, type TaskSession } from '@guildhouse/shared'
 import { cleanText } from './rules'
 
 // A task as the server keeps it: the shared shape, plus whether it has already helped a plant along.
@@ -93,7 +93,7 @@ export function addTask(todo: Todo, listId: unknown, title: unknown, category: u
   const list = listOf(todo, listId)
   const text = cleanText(title, MAX_TASK_LENGTH)
   if (!list || !text || list.tasks.length >= MAX_TASKS) return null
-  const task = { id: newId(now), title: text, done: false, doneAt: 0, at: now, category: categoryOf(todo, category), rewarded: false }
+  const task = { id: newId(now), title: text, done: false, doneAt: 0, at: now, category: categoryOf(todo, category), priority: 0, due: '', starred: false, rewarded: false }
   list.tasks.unshift(task)
   return task
 }
@@ -114,6 +114,19 @@ export function tagTask(todo: Todo, id: unknown, category: unknown): boolean {
   return true
 }
 
+// Says how pressing a task is: its priority, the day it is due, and whether it is starred as a
+// must for today. Anything left out stays as it was.
+export function planTask(todo: Todo, id: unknown, plan: { priority?: unknown; due?: unknown; starred?: unknown }): boolean {
+  const task = find(todo, id)?.task
+  if (!task) return false
+  const priority = plan.priority === 0 || PRIORITIES.some((p) => p.id === plan.priority) ? (plan.priority as number) : task.priority
+  const due = plan.due === '' || isDay(plan.due) ? plan.due : task.due
+  const starred = typeof plan.starred === 'boolean' ? plan.starred : task.starred
+  if (priority === task.priority && due === task.due && starred === task.starred) return false
+  Object.assign(task, { priority, due, starred })
+  return true
+}
+
 // Returns the task when its state actually changed.
 export function tickTask(todo: Todo, id: unknown, done: boolean, now: number): KeptTask | null {
   const task = find(todo, id)?.task
@@ -130,14 +143,16 @@ export function removeTask(todo: Todo, id: unknown): boolean {
   return true
 }
 
-// Moves a task, within its list, so that it sits just before `before`, or at the end when that is not given.
-export function moveTask(todo: Todo, id: unknown, before: unknown): boolean {
+// Moves a task so that it sits just before `before`, or at the end when that is not given. It stays
+// in its own list unless `before` is in another, or `toList` names one.
+export function moveTask(todo: Todo, id: unknown, before?: unknown, toList?: unknown): boolean {
   const found = find(todo, id)
   if (!found || id === before) return false
-  const tasks = found.list.tasks
-  tasks.splice(tasks.indexOf(found.task), 1)
-  const to = tasks.findIndex((t) => t.id === before)
-  tasks.splice(to < 0 ? tasks.length : to, 0, found.task)
+  const target = find(todo, before)?.list ?? listOf(todo, toList) ?? found.list
+  if (target !== found.list && target.tasks.length >= MAX_TASKS) return false
+  found.list.tasks.splice(found.list.tasks.indexOf(found.task), 1)
+  const to = target.tasks.findIndex((t) => t.id === before)
+  target.tasks.splice(to < 0 ? target.tasks.length : to, 0, found.task)
   return true
 }
 

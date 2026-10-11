@@ -10,6 +10,30 @@ export interface Task {
   at: number
   // The id of one of its owner's categories, or '' for none.
   category: string
+  // How pressing it is: 1 high, 2 medium, 3 low, or 0 when its owner has not said.
+  priority: number
+  // The day it should be done by, as YYYY-MM-DD, or '' for none.
+  due: string
+  // Starred tasks are the ones that must be done today.
+  starred: boolean
+}
+
+export const PRIORITIES = [
+  { id: 1, name: 'High', color: '#e07a5f' },
+  { id: 2, name: 'Medium', color: '#d8b25e' },
+  { id: 3, name: 'Low', color: '#6f9bd8' },
+] as const
+
+export const isDay = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v))
+
+// What to do first: starred tasks, then by priority, then by whichever is due soonest. Tasks that
+// tie keep the order their owner put them in.
+export function byUrgency<T extends Pick<Task, 'priority' | 'due' | 'starred'>>(tasks: T[]): T[] {
+  const rank = (t: T) => t.priority || 4
+  return tasks
+    .map((task, i) => ({ task, i }))
+    .sort((a, b) => Number(b.task.starred) - Number(a.task.starred) || rank(a.task) - rank(b.task) || (a.task.due || '9').localeCompare(b.task.due || '9') || a.i - b.i)
+    .map((x) => x.task)
 }
 
 export interface TaskCategory {

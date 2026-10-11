@@ -4,6 +4,7 @@ import { player, useGame } from '../game'
 import { remotes, useNet } from '../net/net'
 import { clockText, localHour, skyAt } from '../time'
 import { useStats } from '../stats'
+import { Invites } from './Company'
 import { Icon } from './icons'
 import { Knock } from './Knock'
 import { Alarm, Pomodoro } from './Pomodoro'
@@ -145,6 +146,7 @@ export function Hud() {
       <Clock />
       <Pomodoro />
       <Ring />
+      <Invites />
       <Alarm />
       <Knock />
       <Profile />

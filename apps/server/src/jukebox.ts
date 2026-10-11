@@ -6,9 +6,12 @@ export const Track = schema(
 )
 export type Track = SchemaType<typeof Track>
 
+// Music belongs to whoever put it on; anyone else may tune in and add to the queue. `host` is the
+// name of who started it, and `members` the keys of everyone listening, separated by spaces.
+// Anyone may tune in while it is `open`; otherwise only those `invited` by name.
 // queue[0] is what is playing. While playing, position = (now - startedAt) / 1000; while paused it is pausedAt.
 export const Jukebox = schema(
-  { queue: t.array(Track), startedAt: t.number(), paused: t.boolean(), pausedAt: t.number() },
+  { id: t.string(), host: t.string(), members: t.string(), open: t.boolean(), invited: t.string(), queue: t.array(Track), startedAt: t.number(), paused: t.boolean(), pausedAt: t.number() },
   'Jukebox',
 )
 export type Jukebox = SchemaType<typeof Jukebox>

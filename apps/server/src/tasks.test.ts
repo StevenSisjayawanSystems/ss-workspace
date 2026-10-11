@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_LISTS, MAX_TASKS } from '@guildhouse/shared'
-import { addCategory, addList, addTask, clearDone, editTask, finishSession, moveTask, newTodo, removeCategory, removeList, removeTask, renameList, shareList, summary, tagTask, tickTask } from './tasks'
+import { MAX_LISTS, MAX_TASKS, byUrgency } from '@guildhouse/shared'
+import { addCategory, addList, addTask, clearDone, editTask, finishSession, moveTask, newTodo, planTask, removeCategory, removeList, removeTask, renameList, shareList, summary, tagTask, tickTask } from './tasks'
 
 describe('a to-do', () => {
   it('adds on top, edits, ticks, reorders, removes and clears', () => {
@@ -31,6 +31,33 @@ describe('a to-do', () => {
     expect(clearDone(todo, list.id)).toBe(false)
     expect(removeTask(todo, b.id)).toBe(true)
     expect(todo.lists[0].tasks.map((t) => t.id)).toEqual([a.id])
+  })
+
+  it('plans tasks with a priority, a due day and a star, and moves them between lists', () => {
+    const todo = newTodo(0)
+    const list = todo.lists[0]
+    const a = addTask(todo, list.id, 'Brief', '', 1)!
+    const b = addTask(todo, list.id, 'Review', '', 2)!
+    expect(a).toMatchObject({ priority: 0, due: '', starred: false })
+    expect(planTask(todo, a.id, { priority: 1, due: '2026-10-12', starred: true })).toBe(true)
+    expect(a).toMatchObject({ priority: 1, due: '2026-10-12', starred: true })
+    // Nonsense is ignored, and what is left out stays as it was.
+    expect(planTask(todo, a.id, { priority: 9, due: 'tomorrow', starred: 'yes' })).toBe(false)
+    expect(planTask(todo, a.id, { due: '' })).toBe(true)
+    expect(a).toMatchObject({ priority: 1, due: '', starred: true })
+    expect(planTask(todo, 'nope', { starred: true })).toBe(false)
+    expect(byUrgency([b, a]).map((t) => t.id)).toEqual([a.id, b.id])
+    planTask(todo, a.id, { starred: false, priority: 3 })
+    planTask(todo, b.id, { priority: 2 })
+    expect(byUrgency(list.tasks).map((t) => t.id)).toEqual([b.id, a.id])
+
+    const other = addList(todo, 'Later', 3)!
+    const c = addTask(todo, other.id, 'Lunch', '', 4)!
+    expect(moveTask(todo, a.id, undefined, other.id)).toBe(true)
+    expect(other.tasks.map((t) => t.id)).toEqual([c.id, a.id])
+    expect(moveTask(todo, b.id, c.id)).toBe(true)
+    expect(other.tasks.map((t) => t.id)).toEqual([b.id, c.id, a.id])
+    expect(list.tasks).toHaveLength(0)
   })
 
   it('keeps several lists, always at least one, each shared with whoever is chosen', () => {

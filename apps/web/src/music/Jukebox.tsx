@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useGame } from '../game'
 import { jukebox, serverNow, useNet } from '../net/net'
+import { Company } from '../ui/Company'
 import { Icon } from '../ui/icons'
 
 // Minimal surface of the YouTube IFrame Player API that we use.
@@ -26,8 +27,6 @@ const PLAYING = 1
 const BUFFERING = 3
 const ENDED = 0
 const DRIFT_SECONDS = 1.2
-// Music belongs to the tavern; elsewhere it carries on quietly in the background.
-const AWAY_VOLUME = 0.3
 
 let api: Promise<void> | undefined
 export function loadApi() {
@@ -54,20 +53,21 @@ const savedVolume = () => {
 
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
-// Music the house keeps to hand: one press puts it in the queue. Add more here.
+// Music the house keeps to hand: one press puts it in your queue. Add more here.
 const PICKS = [{ videoId: 'jzAxOE3Fufk', title: 'Jazzy lo-fi beats for study and focus' }]
 
+// Your music. It plays for you alone until someone tunes in; then everyone listening shares the queue.
 export function Jukebox() {
   const juke = useNet((s) => s.juke)
+  const stations = useNet((s) => s.stations)
   const error = useNet((s) => s.jukeError)
   const online = useNet((s) => s.status === 'online')
-  const inTavern = useGame((s) => s.zone === 'tavern')
   // The meditation grove plays its own guide, so the jukebox falls silent for whoever is in there.
   const meditating = useGame((s) => s.zone === 'meditation')
   const open = useGame((s) => s.jukeOpen)
   const setOpen = useGame((s) => s.setJukeOpen)
   const [volume, setVolume] = useState(savedVolume)
-  // Silences the music for you alone; everyone else keeps listening.
+  // Silences the music without leaving it; anyone listening along keeps hearing it.
   const [muted, setMuted] = useState(() => {
     try {
       return localStorage.getItem(MUTE_KEY) === '1'
@@ -86,6 +86,7 @@ export function Jukebox() {
   const jukeRef = useRef(juke)
   jukeRef.current = juke
   const current = juke.queue[0]
+  const alone = juke.members.length < 2
 
   // Build the player the first time there is something to play.
   const wanted = !!current
@@ -119,7 +120,7 @@ export function Jukebox() {
     }
   }, [wanted])
 
-  // Keep the local player on the shared clock: on every change, and on a timer to correct drift.
+  // Keep the local player on the server's clock: on every change, and on a timer to correct drift.
   useEffect(() => {
     if (!ready) return
     const sync = () => {
@@ -163,14 +164,14 @@ export function Jukebox() {
   }, [ready, juke])
 
   useEffect(() => {
-    if (ready) yt.current?.setVolume(muted || meditating ? 0 : volume * (inTavern ? 1 : AWAY_VOLUME))
+    if (ready) yt.current?.setVolume(muted || meditating ? 0 : volume)
     try {
       localStorage.setItem(VOLUME_KEY, String(volume))
       localStorage.setItem(MUTE_KEY, muted ? '1' : '0')
     } catch {
       // Volume simply will not be remembered.
     }
-  }, [ready, volume, inTavern, muted, meditating])
+  }, [ready, volume, muted, meditating])
 
   const add = (e: FormEvent) => {
     e.preventDefault()
@@ -194,10 +195,10 @@ export function Jukebox() {
         <div className="juke-now">
           <div className="juke-title">{current ? current.title : 'Nothing playing'}</div>
           <div className="juke-sub">
-            {current ? `${clock(elapsed)}${current.duration ? ` / ${clock(current.duration)}` : ''} · added by ${current.addedBy}` : 'Add a YouTube link to start'}
+            {current ? `${clock(elapsed)}${current.duration ? ` / ${clock(current.duration)}` : ''} · added by ${current.addedBy}` : stations.length ? 'Play your own, or tune in to someone' : 'Add a YouTube link to play your own'}
           </div>
         </div>
-        <button className={`icon-btn ${muted ? 'danger' : ''}`} aria-label={muted ? 'Unmute music for me' : 'Mute music for me'} title={muted ? 'Unmute music for me' : 'Mute music for me'} onClick={() => setMuted(!muted)}>
+        <button className={`icon-btn ${muted ? 'danger' : ''}`} aria-label={muted ? 'Unmute' : 'Mute'} title={muted ? 'Unmute' : 'Mute'} onClick={() => setMuted(!muted)}>
           {muted ? <Icon.volumeOff /> : <Icon.volume />}
         </button>
         {current && (
@@ -209,6 +210,11 @@ export function Jukebox() {
               <Icon.skip />
             </button>
           </>
+        )}
+        {juke.id && (
+          <button className="icon-btn danger" aria-label={alone ? 'Stop the music' : 'Stop listening'} title={alone ? 'Stop the music' : 'Stop listening. It carries on for the others'} onClick={() => jukebox.leave()}>
+            {alone ? <Icon.stop /> : <Icon.leave />}
+          </button>
         )}
       </div>
       {blocked && current && !juke.paused && (
@@ -226,6 +232,21 @@ export function Jukebox() {
           </button>
         </form>
         {error && <div className="juke-error">{error}</div>}
+        {juke.id && <Company members={juke.members} open={juke.open} onOpen={jukebox.open} onBring={jukebox.bring} />}
+        {stations.length > 0 && (
+          <div className="juke-picks">
+            <span>Tune in</span>
+            {stations.map((st) => (
+              <button key={st.id} title={`Listen along with ${st.host}`} onClick={() => jukebox.join(st.id)}>
+                <Icon.people />
+                <b>
+                  {st.host} · {st.queue[0].title}
+                </b>
+                <i>Join</i>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="juke-picks">
           <span>House picks</span>
           {PICKS.map((pick) => {
@@ -240,7 +261,7 @@ export function Jukebox() {
           })}
         </div>
         <label className="juke-volume">
-          <span>{muted ? 'Muted for you' : `Volume${inTavern ? '' : ' (quieter outside the tavern)'}`}</span>
+          <span>{muted ? 'Muted' : 'Volume'}</span>
           <input type="range" min={0} max={100} value={volume} onChange={(e) => setVolume(Number(e.target.value))} />
         </label>
         {juke.queue.length > 1 && (

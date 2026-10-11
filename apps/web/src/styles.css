@@ -5015,3 +5015,382 @@ button.banner {
 .schedule-list .icon-btn.small {
   float: none;
 }
+
+/* Planning a task: a star for today's musts, a flag for priority and due day, and the task in focus. */
+.task-star {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: #7f8aa0;
+  background: none;
+  border: 0;
+  border-radius: 2px;
+}
+
+button.task-star {
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, transform 0.14s;
+}
+
+.task:hover button.task-star,
+button.task-star:focus-visible,
+button.task-star.on {
+  opacity: 1;
+}
+
+button.task-star:hover {
+  color: var(--gold);
+}
+
+button.task-star:active {
+  transform: scale(0.84);
+}
+
+.task-star svg {
+  width: 15px;
+  height: 15px;
+}
+
+.task-star.on {
+  color: var(--gold);
+}
+
+.task-star.on svg {
+  fill: var(--gold);
+}
+
+.task-flag {
+  display: grid;
+  color: #7f8aa0;
+}
+
+.task-flag svg {
+  width: 12px;
+  height: 12px;
+}
+
+.task-tag.late {
+  color: #f0a48f;
+  border-color: var(--red);
+}
+
+.task.focus .task-title {
+  color: var(--gold);
+}
+
+.task .task-tool.on {
+  color: var(--gold);
+  opacity: 1;
+}
+
+.tasks-pop.plan label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 6px;
+  padding: 8px 8px 0;
+  font: 700 12px var(--ui);
+  border-top: 1px solid rgba(216, 178, 94, 0.18);
+}
+
+.tasks-pop.plan input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  font: inherit;
+  color: inherit;
+  background: var(--panel);
+  border: 1px solid var(--gold-deep);
+  border-radius: 2px;
+  outline: none;
+  color-scheme: dark;
+}
+
+.tasks-quick {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px 2px;
+}
+
+.tasks-pop.tags .tasks-quick button {
+  width: auto;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: #b9c2d2;
+  border: 1px solid #2a3244;
+  border-radius: 999px;
+}
+
+/* A task held over another list will be sent there. */
+.tasks-rail li.over > button {
+  background: rgba(216, 178, 94, 0.16);
+}
+
+@media (hover: none) {
+  button.task-star {
+    opacity: 1;
+  }
+}
+
+/* In the quest tracker a task's words are the way to focus on it, with its plan and category beside them. */
+.quests button.task-title {
+  display: block;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.quests .task.focus .task-title {
+  color: var(--gold);
+}
+
+.quests .task-title svg {
+  width: 12px;
+  height: 12px;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+
+.quests .task-title small {
+  margin-left: 7px;
+  font: 800 10.5px var(--ui);
+  color: #9aa6ba;
+  white-space: nowrap;
+}
+
+.quests .task-title small.late {
+  color: #f0a48f;
+}
+
+.quests .task-tag {
+  max-width: 96px;
+  padding: 1px 7px 1px 6px;
+  font-size: 10.5px;
+}
+
+.quests .task-star {
+  width: 20px;
+  height: 20px;
+}
+
+/* The timer panel: the task in focus, and other people's timers to join. */
+.pomo-focus ul {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.pomo-focus li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+}
+
+.pomo-focus li span {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.pomo-focus li .task-box {
+  width: 17px;
+  height: 17px;
+}
+
+.pomo-focus li .task-tool {
+  width: 22px;
+  height: 22px;
+}
+
+.pomo-focus select {
+  width: 100%;
+}
+
+.pomo-focus select,
+.company select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+  background: var(--well);
+  border: 1px solid var(--gold-deep);
+  border-radius: 3px;
+  outline: none;
+  color-scheme: dark;
+}
+
+.pomo-focus select:focus,
+.company select:focus {
+  border-color: var(--cream);
+}
+
+.pomo-others .pomo-presets {
+  margin-top: 0;
+}
+
+.pomo-others .pomo-presets b {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pomo-others .pomo-presets span {
+  flex: none;
+  margin-left: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Who is in on a timer or some music, and who else may come. */
+.company {
+  margin-top: 14px;
+  padding-top: 12px;
+  text-align: left;
+  border-top: 1px solid rgba(216, 178, 94, 0.18);
+}
+
+.company-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.company-head span,
+.pomo-alarm .pomo-custom-label {
+  font: 600 10px var(--display);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.company ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* People in on it are solid; people who could be added are outlined, with a plus. */
+.company li:not(:has(button)) {
+  padding: 3px 10px;
+  font: 700 11px var(--ui);
+  color: var(--teal-ink);
+  background: var(--gold);
+  border: 1px solid var(--gold);
+  border-radius: 999px;
+}
+
+.company li button {
+  border-style: dashed;
+  border-color: #3a465c;
+}
+
+.company button {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  font: 700 11px var(--ui);
+  color: #b9c2d2;
+  background: var(--well);
+  border: 1px solid #2a3244;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.company button:hover {
+  border-color: var(--gold);
+}
+
+.company button.on {
+  color: var(--gold);
+  border-color: var(--gold-deep);
+}
+
+.company button svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* The timer panel reads as a clock on top and a few quiet sections below it. */
+.pomo {
+  width: 276px;
+  padding: 16px 16px 14px;
+}
+
+.pomo-time {
+  margin: 6px 0 8px;
+}
+
+.pomo-actions {
+  margin: 14px 0 10px;
+}
+
+.pomo-alarm {
+  margin-top: 14px;
+  padding-top: 12px;
+}
+
+.pomo-alarm .pomo-custom-label {
+  margin-bottom: 9px;
+}
+
+.pomo-alarm .pomo-custom-label svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Drop-downs are drawn to match the fields around them, with one small arrow. */
+.pomo-focus select,
+.company select {
+  padding-right: 28px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23d8b25e' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.500l3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 12px;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.pomo-focus select:disabled {
+  color: #7f8aa0;
+  border-color: #2a3244;
+  cursor: default;
+}
+
+.pomo-focus li + li {
+  border-top: 1px solid rgba(216, 178, 94, 0.12);
+}
+
+/* The alarm sits on one line: when, what for, and the button that sets it. */
+.pomo-alarm form {
+  grid-template-columns: auto 1fr auto;
+}
+
+.pomo-alarm form input[type='time'] {
+  grid-column: auto;
+  width: 108px;
+}
+
+.pomo-alarm form input::placeholder {
+  color: #7f8aa0;
+}

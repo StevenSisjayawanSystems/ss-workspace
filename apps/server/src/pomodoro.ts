@@ -1,10 +1,16 @@
 import { schema, t, type SchemaType } from '@colyseus/schema'
 
-// One shared timer for the whole guildhouse, so people can work in rhythm together.
+// A timer belongs to whoever started it; anyone else may join and work in rhythm with them.
 // As a pomodoro it cycles focus -> break -> focus until someone stops it, with every fourth break a long one.
 // As a plain timer it counts down once and stops.
 export const Pomodoro = schema(
   {
+    id: t.string(),
+    // Member keys of everyone in on it, separated by spaces.
+    members: t.string(),
+    // Whether anyone may join, and the keys of people invited by name.
+    open: t.boolean(),
+    invited: t.string(),
     // 'idle', 'focus', 'break', or 'timer' for a plain one-off countdown
     phase: t.string(),
     // Server time the current phase ends, while running.

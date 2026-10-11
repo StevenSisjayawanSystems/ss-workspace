@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { CATEGORY_COLORS, MAX_CATEGORIES, MAX_CATEGORY_NAME, MAX_LISTS, MAX_LIST_NAME, MAX_TASKS, MAX_TASK_LENGTH, TASK_BONUS_SECONDS, type Task, type TaskCategory, type TaskList, type TaskSession } from '@guildhouse/shared'
+import { CATEGORY_COLORS, PRIORITIES, MAX_CATEGORIES, MAX_CATEGORY_NAME, MAX_LISTS, MAX_LIST_NAME, MAX_TASKS, MAX_TASK_LENGTH, TASK_BONUS_SECONDS, type Task, type TaskCategory, type TaskList, type TaskSession } from '@guildhouse/shared'
 import { useGame } from '../game'
 import { everyone, setStatus, todo, useNet } from '../net/net'
-import { activeList, useTaskView } from '../tasksView'
+import { activeList, dueText, focusTasks, today, toggleFocus, useTaskView } from '../tasksView'
 import { Icon } from './icons'
 
 // A question that has to be answered before something is thrown away or closed.
@@ -43,6 +43,18 @@ function Confirm({ ask, onClose }: { ask: Question; onClose: () => void }) {
 // The little diamond that stands for a category.
 export const Gem = ({ color }: { color?: string }) => <i className="gem" style={color ? { background: color } : undefined} />
 
+// Picks a task to focus on for the timer, alongside any already picked, or lets go of it. Picking one
+// also shows it to others as what you are working on.
+export function focusOn(task: Task) {
+  if (toggleFocus(task.id)) setStatus(task.title)
+}
+
+// When a task should be done, in a few words: its priority and its due day. `late` marks one overdue.
+export function planOf(task: Task) {
+  const priority = PRIORITIES.find((p) => p.id === task.priority)
+  return { priority, text: [priority?.name, task.due && dueText(task.due)].filter(Boolean).join(' · '), late: !!task.due && !task.done && task.due < today() }
+}
+
 // A task just ticked stays where it is for a moment, struck through, before it moves on. This keeps
 // track of which ones those are.
 export function useLinger() {
@@ -62,6 +74,11 @@ export function TaskLine({ task, categories = [] }: { task: Task; categories?: T
   return (
     <li className={task.done ? 'task done' : 'task'}>
       <span className="task-box">{task.done && <Icon.check />}</span>
+      {task.starred && !task.done && (
+        <span className="task-star on" title="A must for today">
+          <Icon.star />
+        </span>
+      )}
       <span className="task-title">{task.title}</span>
       {category && (
         <span className="task-tag">
@@ -132,7 +149,7 @@ function Share({ list, onClose }: { list: TaskList; onClose: () => void }) {
 export function Tasks() {
   const open = useGame((s) => s.tasksOpen)
   const { lists, categories, bonusLeft } = useNet((s) => s.tasks)
-  const { active, grouped } = useTaskView()
+  const { active, group, focus } = useTaskView()
   const { lingering, tick } = useLinger()
   const [draft, setDraft] = useState('')
   const [draftTag, setDraftTag] = useState('')
@@ -141,7 +158,7 @@ export function Tasks() {
   const [words, setWords] = useState('')
   const [renaming, setRenaming] = useState(false)
   const [ask, setAsk] = useState<Question | null>(null)
-  // Which small panel is open: the share picker, the tag menu of one task, or the new-list and new-category fields.
+  // Which small panel is open: the share picker, the tag or planning menu of one task, or the new-list and new-category fields.
   const [pop, setPop] = useState<string | null>(null)
   const [newName, setNewName] = useState('')
   const [newColor, setNewColor] = useState(CATEGORY_COLORS[0])
@@ -186,6 +203,7 @@ export function Tasks() {
   const finished = list.tasks.filter((t) => t.done).length
   const full = list.tasks.length >= MAX_TASKS
   const categoryOf = (id: string) => categories.find((c) => c.id === id)
+  const focused = new Set(focusTasks(lists, focus).map((t) => t.id))
 
   const add = (e: FormEvent) => {
     e.preventDefault()
@@ -211,43 +229,85 @@ export function Tasks() {
   }
   const endDrag = () => (setCarried(null), setOver(null))
 
+  // Dropping one task on another puts it just before, and in a grouped view into that one's group too.
+  const dropOn = (task: Task) => {
+    if (!carried || carried === task.id) return
+    if (group === 'priority') todo.plan(carried, { priority: task.priority })
+    todo.move(carried, task.id, group === 'category' ? { category: categoryOf(task.category)?.id ?? '' } : {})
+  }
+
   const row = (task: Task) => {
     const category = categoryOf(task.category)
+    const plan = planOf(task)
     return (
       <li
         key={task.id}
-        className={`task ${task.done ? 'done' : ''} ${lingering.has(task.id) ? 'lingering' : ''} ${over === task.id && carried !== task.id ? 'over' : ''} ${carried === task.id ? 'carried' : ''}`}
+        className={`task ${task.done ? 'done' : ''} ${lingering.has(task.id) ? 'lingering' : ''} ${over === task.id && carried !== task.id ? 'over' : ''} ${carried === task.id ? 'carried' : ''} ${focused.has(task.id) ? 'focus' : ''}`}
         draggable={!task.done && editing !== task.id}
         onDragStart={(e) => {
           e.dataTransfer.effectAllowed = 'move'
           setCarried(task.id)
         }}
         onDragOver={(e) => {
-          // In a grouped view a drop lands on the group, not between two tasks.
-          if (!carried || task.done || grouped) return
+          if (!carried || task.done) return
           e.preventDefault()
+          e.stopPropagation()
           setOver(task.id)
         }}
-        onDrop={() => {
-          if (grouped || task.done) return
-          if (carried && carried !== task.id) todo.move(carried, task.id)
+        onDrop={(e) => {
+          if (task.done) return
+          e.stopPropagation()
+          dropOn(task)
           endDrag()
         }}
         onDragEnd={endDrag}
       >
         {!task.done && (
-          <span className="task-grip" title={grouped ? 'Drag onto a category to move it there' : 'Drag to reorder'}>
+          <span className="task-grip" title="Drag to reorder, or onto a group or another list to move it there">
             <Icon.grip />
           </span>
         )}
         <button className="task-box" role="checkbox" aria-checked={task.done} aria-label={task.done ? `Mark "${task.title}" as not done` : `Mark "${task.title}" as done`} onClick={() => tick(task)}>
           {task.done && <Icon.check />}
         </button>
+        {!task.done && (
+          <button className={task.starred ? 'task-star on' : 'task-star'} aria-pressed={task.starred} aria-label="A must for today" title={task.starred ? 'A must for today. Click to unstar' : 'Star as a must for today'} onClick={() => todo.plan(task.id, { starred: !task.starred })}>
+            <Icon.star />
+          </button>
+        )}
         {editing === task.id ? (
           <input className="task-edit" autoFocus maxLength={MAX_TASK_LENGTH} value={words} onChange={(e) => setWords(e.target.value)} onBlur={saveEdit} onKeyDown={(e) => e.key === 'Enter' && saveEdit()} />
         ) : (
           <span className="task-title" title={task.done ? undefined : 'Click to edit'} onClick={() => !task.done && (setEditing(task.id), setWords(task.title))}>
             {task.title}
+          </span>
+        )}
+        {editing !== task.id && !task.done && (
+          <span className="task-tagger">
+            <button className={`task-tag ${plan.text ? '' : 'none'} ${plan.late ? 'late' : ''}`} title="Priority and due date" onClick={() => setPop(pop === `plan:${task.id}` ? null : `plan:${task.id}`)}>
+              <span className="task-flag" style={plan.priority ? { color: plan.priority.color } : undefined}>
+                <Icon.flag />
+              </span>
+              {plan.text || 'When'}
+            </button>
+            {pop === `plan:${task.id}` && (
+              <div className="tasks-pop tags plan">
+                {[...PRIORITIES, { id: 0, name: 'No priority', color: '' }].map((p) => (
+                  <button key={p.id} className={task.priority === p.id ? 'on' : ''} onClick={() => todo.plan(task.id, { priority: p.id })}>
+                    <Gem color={p.color || undefined} />
+                    {p.name}
+                  </button>
+                ))}
+                <label>
+                  <span>Due</span>
+                  <input type="date" value={task.due} onChange={(e) => todo.plan(task.id, { due: e.target.value })} />
+                </label>
+                <div className="tasks-quick">
+                  <button onClick={() => todo.plan(task.id, { due: today() })}>Today</button>
+                  {task.due && <button onClick={() => todo.plan(task.id, { due: '' })}>No date</button>}
+                </div>
+              </div>
+            )}
           </span>
         )}
         {editing !== task.id && !task.done && (
@@ -270,7 +330,7 @@ export function Tasks() {
           </span>
         )}
         {!task.done && editing !== task.id && (
-          <button className="task-tool" aria-label="Show this as what I am working on" title="Show this as what I am working on" onClick={() => setStatus(task.title)}>
+          <button className={focused.has(task.id) ? 'task-tool on' : 'task-tool'} aria-pressed={focused.has(task.id)} aria-label="Focus on this for my timer" title={focused.has(task.id) ? 'In focus for your timer. Click to let it go' : 'Focus on this for my timer, and show it as what I am working on'} onClick={() => focusOn(task)}>
             <Icon.target />
           </button>
         )}
@@ -283,11 +343,21 @@ export function Tasks() {
     )
   }
 
-  // Grouped: one section per category that has tasks (or is being dragged onto), then the untagged ones.
-  const groups: { id: string; name: string; color?: string; tasks: Task[] }[] = [...categories.map((c) => ({ ...c, tasks: todoList.filter((t) => t.category === c.id) })), { id: '', name: 'No category', tasks: todoList.filter((t) => !categoryOf(t.category)) }].filter((g) => g.tasks.length || carried)
+  // Grouped: one section per category or priority that has tasks (or is being dragged onto), ending with the unsorted ones.
+  const sections: { id: string | number; name: string; color?: string; tasks: Task[] }[] =
+    group === 'priority'
+      ? [...PRIORITIES, { id: 0, name: 'No priority' }].map((p) => ({ ...p, tasks: todoList.filter((t) => t.priority === p.id) }))
+      : [...categories.map((c) => ({ ...c, tasks: todoList.filter((t) => t.category === c.id) })), { id: '', name: 'No category', tasks: todoList.filter((t) => !categoryOf(t.category)) }]
+  const groups = sections.filter((g) => g.tasks.length || carried)
+  // Dropping a task on a group puts it in that group, at the end.
+  const dropIn = (g: { id: string | number }) => {
+    if (!carried) return
+    if (typeof g.id === 'number') todo.plan(carried, { priority: g.id })
+    else todo.tag(carried, g.id)
+  }
 
   let body: ReactNode
-  if (!grouped) {
+  if (group === 'none') {
     body = (
       <ul
         className="tasks-open"
@@ -311,17 +381,17 @@ export function Tasks() {
           setOver(`group:${g.id}`)
         }}
         onDrop={() => {
-          if (carried) todo.tag(carried, g.id)
+          dropIn(g)
           endDrag()
         }}
       >
-        <button className="tasks-group-head" aria-expanded={!shut.has(g.id)} onClick={() => setShut((s) => (s.has(g.id) ? new Set([...s].filter((x) => x !== g.id)) : new Set(s).add(g.id)))}>
+        <button className="tasks-group-head" aria-expanded={!shut.has(`${g.id}`)} onClick={() => setShut((s) => (s.has(`${g.id}`) ? new Set([...s].filter((x) => x !== `${g.id}`)) : new Set(s).add(`${g.id}`)))}>
           <Gem color={g.color} />
           <span>{g.name}</span>
           <em>{g.tasks.length}</em>
-          <i>{shut.has(g.id) ? '▸' : '▾'}</i>
+          <i>{shut.has(`${g.id}`) ? '▸' : '▾'}</i>
         </button>
-        {!shut.has(g.id) && <ul>{g.tasks.map(row)}</ul>}
+        {!shut.has(`${g.id}`) && <ul>{g.tasks.map(row)}</ul>}
       </section>
     ))
   }
@@ -335,7 +405,20 @@ export function Tasks() {
             {lists.map((l) => {
               const left = l.tasks.filter((t) => !t.done).length
               return (
-                <li key={l.id}>
+                <li
+                  key={l.id}
+                  className={over === `list:${l.id}` ? 'over' : ''}
+                  onDragOver={(e) => {
+                    // A task held over another list will be sent there.
+                    if (!carried || l.id === list.id) return
+                    e.preventDefault()
+                    setOver(`list:${l.id}`)
+                  }}
+                  onDrop={() => {
+                    if (carried && l.id !== list.id) todo.move(carried, undefined, { list: l.id })
+                    endDrag()
+                  }}
+                >
                   <button className={l.id === list.id ? 'on' : ''} onClick={() => useTaskView.setState({ active: l.id })}>
                     <span>{l.name}</span>
                     {l.sharedWith.length > 0 && <Icon.people />}
@@ -444,12 +527,11 @@ export function Tasks() {
           </form>
 
           <div className="tasks-bar">
-            <button className={grouped ? '' : 'on'} onClick={() => useTaskView.setState({ grouped: false })}>
-              In order
-            </button>
-            <button className={grouped ? 'on' : ''} onClick={() => useTaskView.setState({ grouped: true })}>
-              By category
-            </button>
+            {(['none', 'category', 'priority'] as const).map((g) => (
+              <button key={g} className={group === g ? 'on' : ''} onClick={() => useTaskView.setState({ group: g })}>
+                {g === 'none' ? 'My order' : g === 'category' ? 'By category' : 'By priority'}
+              </button>
+            ))}
           </div>
 
           <div className="tasks-body">

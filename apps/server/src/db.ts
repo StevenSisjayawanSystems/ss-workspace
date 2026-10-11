@@ -125,7 +125,7 @@ export class Db {
         id: l.id,
         name: l.name,
         sharedWith: l.shared_with ?? [],
-        tasks: (tasks.data ?? []).filter((t) => t.list_id === l.id).map((t) => ({ id: t.id, title: t.title, done: t.done, doneAt: t.done_at ? Date.parse(t.done_at) : 0, at: Date.parse(t.created_at), category: t.category ?? '', rewarded: t.rewarded })),
+        tasks: (tasks.data ?? []).filter((t) => t.list_id === l.id).map((t) => ({ id: t.id, title: t.title, done: t.done, doneAt: t.done_at ? Date.parse(t.done_at) : 0, at: Date.parse(t.created_at), category: t.category ?? '', priority: t.priority ?? 0, due: t.due ?? '', starred: t.starred ?? false, rewarded: t.rewarded })),
       })),
       categories: (categories.data ?? []).map((c) => ({ id: c.id, name: c.name, color: c.color })),
     }
@@ -138,7 +138,7 @@ export class Db {
       const gone = this.sb.from(table).delete().eq('member_id', id)
       fail(`Pruning ${table}`, (await (ids.length ? gone.not('id', 'in', except(ids)) : gone)).error)
     }
-    const tasks = todo.lists.flatMap((l) => l.tasks.map((t, position) => ({ id: t.id, member_id: id, list_id: l.id, title: t.title, done: t.done, done_at: t.doneAt ? new Date(t.doneAt).toISOString() : null, rewarded: t.rewarded, category: t.category, position, created_at: new Date(t.at).toISOString() })))
+    const tasks = todo.lists.flatMap((l) => l.tasks.map((t, position) => ({ id: t.id, member_id: id, list_id: l.id, title: t.title, done: t.done, done_at: t.doneAt ? new Date(t.doneAt).toISOString() : null, rewarded: t.rewarded, category: t.category, priority: t.priority, due: t.due || null, starred: t.starred, position, created_at: new Date(t.at).toISOString() })))
     // Lists go first both ways: removing one takes its tasks with it, and a task needs its list to exist.
     await prune('task_lists', todo.lists.map((l) => l.id))
     fail('Saving lists', (await this.sb.from('task_lists').upsert(todo.lists.map((l, position) => ({ id: l.id, member_id: id, name: l.name, position, shared_with: l.sharedWith })))).error)

@@ -2,13 +2,15 @@ import { useEffect, useState } from 'react'
 import { BADGES, PLANT_SECONDS, QUIET_ZONES, bedOf, formatDuration, levelOf, roomById, seatById, titleOf, xpOf, type ZoneId } from '@guildhouse/shared'
 import { signOut, useAccount } from '../account'
 import { useGame } from '../game'
-import { bedFor, joinCallIn, remotes, ringPerson, seedOf, serverNow, setStatus, useNet } from '../net/net'
+import { bedFor, joinCallIn, jukebox, pomodoro, remotes, ringPerson, seedOf, serverNow, setStatus, useNet } from '../net/net'
 import { LEVELS_EXPLAINED } from './Profile'
 import { useStats } from '../stats'
 import { Icon } from './icons'
 
 interface Row {
   id: string
+  // Their member key, for adding them to a timer or to music.
+  member?: string
   name: string
   level: number
   zone: ZoneId
@@ -29,6 +31,10 @@ const inCallAt = (seat: string | null | undefined) => {
 }
 
 function Person({ row }: { row: Row }) {
+  // Whether they are already in on our timer or our music, and whether we have music to share.
+  const inTimer = useNet((s) => !!row.member && s.pomo.members.includes(row.member))
+  const inMusic = useNet((s) => !!row.member && s.juke.members.includes(row.member))
+  const music = useNet((s) => !!s.juke.id)
   return (
     <li className={row.self ? 'self' : ''}>
       <button className="roster-open" title={`View ${row.self ? 'your' : `${row.name}'s`} profile`} onClick={() => useGame.setState({ profileOf: row.id })}>
@@ -59,6 +65,16 @@ function Person({ row }: { row: Row }) {
           )}
         </span>
       </div>
+      {row.member && !inTimer && (
+        <button className="icon-btn" aria-label={`Add ${row.name} to your timer`} title={`Add ${row.name} to your timer`} onClick={() => pomodoro.bring(row.member!)}>
+          <Icon.timer />
+        </button>
+      )}
+      {row.member && music && !inMusic && (
+        <button className="icon-btn" aria-label={`Put your music on for ${row.name}`} title={`Put your music on for ${row.name}`} onClick={() => jukebox.bring(row.member!)}>
+          <Icon.note />
+        </button>
+      )}
       {!row.self &&
         (row.callZone ? (
           <button className="icon-btn on" aria-label={`Join ${row.name}'s call`} title={`Join ${row.name}'s call in ${roomById(row.callZone).name}`} onClick={() => joinCallIn(row.callZone!)}>
@@ -101,7 +117,7 @@ export function Roster({ onClose }: { onClose: () => void }) {
     { id: 'self', name: profile?.name ?? 'You', level, zone, inCall: inCallAt(seat), onlineSeconds: selfJoinedAt ? (now - selfJoinedAt) / 1000 : 0, streak: progress.streak, status: myStatus, self: true },
     ...ids.flatMap((id) => {
       const r = remotes.get(id)
-      return r ? [{ id, name: r.name, level: r.level || 1, zone: r.zone as ZoneId, inCall: inCallAt(r.seat), callZone: inCallAt(r.seat) ? seatById(r.seat)!.zone : undefined, onlineSeconds: (now - r.joinedAt) / 1000, streak: r.streak, status: r.status }] : []
+      return r ? [{ id, member: r.member, name: r.name, level: r.level || 1, zone: r.zone as ZoneId, inCall: inCallAt(r.seat), callZone: inCallAt(r.seat) ? seatById(r.seat)!.zone : undefined, onlineSeconds: (now - r.joinedAt) / 1000, streak: r.streak, status: r.status }] : []
     }),
   ]
   const facts: [string, string][] = [

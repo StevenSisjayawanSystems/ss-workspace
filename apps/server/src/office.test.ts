@@ -22,6 +22,11 @@ describe('rules', () => {
 
 const PORT = 2599
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+const all = (map: any) => {
+  const out: any[] = []
+  map.forEach((v: any) => out.push(v))
+  return out
+}
 const players = (room: Room<any>) => {
   const out: Record<string, any> = {}
   room.state.players.forEach((p: any, id: string) => (out[id] = p))
@@ -37,7 +42,7 @@ describe('office room', () => {
     await server.gracefullyShutdown(false)
   })
 
-  it('syncs two players, validates movement, relays chat, shares the jukebox and cleans up on leave', async () => {
+  it('syncs two players, validates movement, relays chat, keeps timers and music to those who joined, and cleans up on leave', async () => {
     const a = await new Client(`ws://localhost:${PORT}`).joinOrCreate<any>('office', { name: 'Ada', robe: '#112233' })
     const b = await new Client(`ws://localhost:${PORT}`).joinOrCreate<any>('office', { name: '  Ben  ', robe: 'nope' })
     const chats: any[] = []
@@ -130,15 +135,52 @@ describe('office room', () => {
     await wait(200)
     expect(answers).toEqual([{ from: b.sessionId, name: 'Ben', accept: true }])
 
-    // The shared timer is visible to everyone and controllable by anyone.
-    expect(b.state.pomodoro.phase).toBe('idle')
+    // A timer belongs to whoever started it. Others can see it and join; only those in on it can change it.
+    expect(all(b.state.pomodoros)).toHaveLength(0)
     a.send('pomo:start', { focusMin: 25, breakMin: 5 })
     await wait(200)
-    expect(b.state.pomodoro).toMatchObject({ phase: 'focus', startedBy: 'Ada', focusMin: 25 })
-    expect(b.state.pomodoro.endsAt - Date.now()).toBeGreaterThan(24 * 60000)
-    b.send('pomo:stop')
+    const [timer] = all(b.state.pomodoros)
+    expect(timer).toMatchObject({ phase: 'focus', startedBy: 'Ada', focusMin: 25 })
+    expect(timer.endsAt - Date.now()).toBeGreaterThan(24 * 60000)
+    expect(timer.members.split(' ')).toHaveLength(1)
+    b.send('pomo:pause')
     await wait(200)
-    expect(a.state.pomodoro.phase).toBe('idle')
+    expect(all(a.state.pomodoros)[0].paused).toBe(false)
+    // Closed to the room, nobody can walk in. Someone busy with their own timer is asked rather than pulled out of it.
+    const invites: any[] = []
+    const brought: any[] = []
+    b.onMessage('invite', (m: any) => invites.push(m))
+    b.onMessage('brought', (m: any) => brought.push(m))
+    a.send('pomo:open', false)
+    await wait(200)
+    b.send('pomo:join', timer.id)
+    await wait(200)
+    expect(all(a.state.pomodoros)[0]).toMatchObject({ open: false, members: timer.members })
+    b.send('pomo:timer', { minutes: 5 })
+    await wait(200)
+    a.send('pomo:bring', players(a)[b.sessionId].member)
+    await wait(200)
+    expect(invites).toEqual([{ what: 'timer', id: timer.id, name: 'Ada' }])
+    expect(all(a.state.pomodoros)).toHaveLength(2)
+    // Someone free is simply added, and told.
+    b.send('pomo:leave')
+    await wait(200)
+    a.send('pomo:bring', players(a)[b.sessionId].member)
+    await wait(200)
+    expect(brought).toEqual([{ what: 'timer', name: 'Ada' }])
+    expect(all(a.state.pomodoros)).toHaveLength(1)
+    expect(all(a.state.pomodoros)[0].members.split(' ')).toHaveLength(2)
+    b.send('pomo:pause')
+    await wait(200)
+    expect(all(a.state.pomodoros)[0].paused).toBe(true)
+    // Starting one of your own leaves the one you had joined, and a timer ends when the last person leaves it.
+    b.send('pomo:timer', { minutes: 5 })
+    await wait(200)
+    expect(all(a.state.pomodoros).map((p: any) => [p.startedBy, p.phase, p.members.split(' ').length]).sort()).toEqual([['Ada', 'focus', 1], ['Ben', 'timer', 1]])
+    a.send('pomo:leave')
+    b.send('pomo:leave')
+    await wait(200)
+    expect(all(a.state.pomodoros)).toHaveLength(0)
 
     // Bulletin board and status are shared; a note can be taken down by anyone.
     a.send('note:add', { text: 'Standup at 10  ', color: '#9fd0c4' })
@@ -215,16 +257,27 @@ describe('office room', () => {
     a.send('juke:add', 'https://youtu.be/jfKfPfyJRdk')
     await wait(4500)
     expect(errors).toHaveLength(1)
-    expect(b.state.jukebox.queue.length).toBe(1)
-    expect(b.state.jukebox.queue[0].videoId).toBe('jfKfPfyJRdk')
-    expect(b.state.jukebox.queue[0].addedBy).toBe('Ada')
-    expect(b.state.jukebox.paused).toBe(false)
+    // Music is its owner's until someone tunes in; only listeners can change it.
+    const [station] = all(b.state.jukeboxes)
+    expect(station).toMatchObject({ host: 'Ada', paused: false })
+    expect(station.queue.length).toBe(1)
+    expect(station.queue[0].videoId).toBe('jfKfPfyJRdk')
+    expect(station.queue[0].addedBy).toBe('Ada')
     b.send('juke:pause')
     await wait(200)
-    expect(a.state.jukebox.paused).toBe(true)
+    expect(all(a.state.jukeboxes)[0].paused).toBe(false)
+    b.send('juke:join', station.id)
+    await wait(200)
+    b.send('juke:pause')
+    await wait(200)
+    expect(all(a.state.jukeboxes)[0].paused).toBe(true)
     b.send('juke:skip')
     await wait(200)
-    expect(a.state.jukebox.queue.length).toBe(0)
+    expect(all(a.state.jukeboxes)[0].queue.length).toBe(0)
+    a.send('juke:leave')
+    b.send('juke:leave')
+    await wait(200)
+    expect(all(a.state.jukeboxes)).toHaveLength(0)
 
     await a.leave()
     await wait(200)

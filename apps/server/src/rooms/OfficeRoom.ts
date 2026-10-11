@@ -6,7 +6,8 @@ import { db, type ChatLine } from '../db'
 import { Note, NoteStore, fromNote, toComment, toNote } from '../notes'
 import { iceServers } from '../ice'
 import { accrue, cleanOffset, cleanProgress, count, guestKey, localDay, newMember, standingOf, type Member } from '../members'
-import { addCategory, addList, addTask, clearDone, editTask, finishSession, moveTask, removeCategory, removeList, removeTask, renameList, shareList, tagTask, tickTask, type KeptTask } from '../tasks'
+import { addCategory, addList, addTask, clearDone, editTask, finishSession, moveTask, planTask, removeCategory, removeList, removeTask, renameList, shareList, tagTask, tickTask, type KeptTask } from '../tasks'
+import { canJoin, companyOf, invite, join, keysOf, leave, newId, type Shared } from '../company'
 import * as garden from '../garden'
 import * as juke from '../jukebox'
 import * as pomo from '../pomodoro'
@@ -51,7 +52,7 @@ export const Player = schema(
 )
 export type Player = SchemaType<typeof Player>
 
-export const OfficeState = schema({ players: t.map(Player), jukebox: juke.Jukebox, pomodoro: pomo.Pomodoro, notes: t.array(Note), desks: t.array(res.DeskClaim), bookings: t.array(res.Booking), doors: t.array(res.ClosedDoor), garden: t.array(garden.Plot) }, 'OfficeState')
+export const OfficeState = schema({ players: t.map(Player), jukeboxes: t.map(juke.Jukebox), pomodoros: t.map(pomo.Pomodoro), notes: t.array(Note), desks: t.array(res.DeskClaim), bookings: t.array(res.Booking), doors: t.array(res.ClosedDoor), garden: t.array(garden.Plot) }, 'OfficeState')
 export type OfficeState = SchemaType<typeof OfficeState>
 
 // Close code sent when the invite code is missing or wrong.
@@ -64,6 +65,8 @@ const PUSH_MS = 5000
 // An alarm is for a time of day, so it can be at most a day ahead.
 const ALARM_HORIZON_MS = 24 * 60 * 60 * 1000
 const SAVE_MS = 30000
+// How long someone's timer and music wait for them after they leave, so a reload does not end either.
+const AWAY_MS = 2 * 60 * 1000
 
 const EMOTES = new Set(['wave', 'heart', 'laugh', 'cheer'])
 
@@ -81,7 +84,10 @@ export class OfficeRoom extends Room {
   private lastGardenSave = 0
   // Beds from the old garden file that no account has taken up yet, by the name on them.
   private unclaimedBeds = new Map<string, number>()
-  private unplanted = 0
+  // Focus time each person has banked but not yet planted, by member key.
+  private unplanted = new Map<string, number>()
+  // Accounts that have just left and may be back in a moment, with when they went.
+  private away = new Map<string, number>()
   private adds: Promise<void> = Promise.resolve()
   // Everyone here now, by member key and by session; and every account that has ever joined.
   private members = new Map<string, Member>()
@@ -366,7 +372,14 @@ export class OfficeRoom extends Room {
     this.onMessage('task:edit', (client: Client, m: { id?: unknown; title?: unknown }) => mine(client, (me) => editTask(me.todo, m?.id, m?.title)))
     this.onMessage('task:tag', (client: Client, m: { id?: unknown; category?: unknown }) => mine(client, (me) => tagTask(me.todo, m?.id, m?.category)))
     this.onMessage('task:remove', (client: Client, id: unknown) => mine(client, (me) => removeTask(me.todo, id)))
-    this.onMessage('task:move', (client: Client, m: { id?: unknown; before?: unknown }) => mine(client, (me) => moveTask(me.todo, m?.id, m?.before)))
+    // A task can be put before another, sent to another list, and given a category, all in one go.
+    this.onMessage('task:move', (client: Client, m: { id?: unknown; before?: unknown; list?: unknown; category?: unknown }) =>
+      mine(client, (me) => {
+        const tagged = typeof m?.category === 'string' && tagTask(me.todo, m.id, m.category)
+        return moveTask(me.todo, m?.id, m?.before, m?.list) || tagged
+      }),
+    )
+    this.onMessage('task:plan', (client: Client, m: { id?: unknown; priority?: unknown; due?: unknown; starred?: unknown }) => mine(client, (me) => planTask(me.todo, m?.id, m ?? {})))
     this.onMessage('task:clear', (client: Client, list: unknown) => mine(client, (me) => clearDone(me.todo, list)))
     this.onMessage('task:done', (client: Client, m: { id?: unknown; done?: unknown }) =>
       mine(client, (me, now) => {
@@ -440,36 +453,105 @@ export class OfficeRoom extends Room {
       count(me, 'messages')
     })
 
-    this.state.jukebox ??= new juke.Jukebox()
-    const jb = this.state.jukebox
-    this.state.pomodoro ??= new pomo.Pomodoro()
-    const timer = this.state.pomodoro
-    pomo.reset(timer)
+    // Timers and music. Each belongs to whoever started it and reaches only the people who joined.
+    const timers = this.state.pomodoros
+    const stations = this.state.jukeboxes
+    const timerOf = (client: Client) => companyOf(timers, this.bySession.get(client.sessionId)?.key ?? '')
+    const stationOf = (client: Client) => companyOf(stations, this.bySession.get(client.sessionId)?.key ?? '')
     this.setSimulationInterval(() => {
       const now = Date.now()
-      juke.tick(jb, now)
+      stations.forEach((jb) => void juke.tick(jb, now))
       if (res.expire(this.state, now)) this.saveReservations()
       res.reopenEmpty(this.state, this.occupied())
-      this.tendGarden(timer, now)
+      this.tendGarden(now)
       this.tendMembers(now)
-      const finished = pomo.tick(timer, now)
-      // Everyone hears the bell; only a finished focus session earns credit.
-      if (finished) this.broadcast('pomo:done', { finished, round: timer.round })
-      if (finished === 'focus') for (const member of this.members.values()) count(member, 'pomodoros')
+      for (const [key, since] of this.away) {
+        if (now - since < AWAY_MS) continue
+        this.away.delete(key)
+        this.leaveCompany(key)
+      }
+      const over: string[] = []
+      timers.forEach((timer, id) => {
+        const finished = pomo.tick(timer, now)
+        if (!finished) return
+        // Those in on it hear the bell; only a finished focus session earns credit.
+        for (const key of keysOf(timer.members)) {
+          this.tell(key, 'pomo:done', { finished, round: timer.round })
+          const member = this.members.get(key)
+          if (finished === 'focus' && member) count(member, 'pomodoros')
+        }
+        if (timer.phase === 'idle') over.push(id)
+      })
+      for (const id of over) timers.delete(id)
     }, 1000)
 
-    this.onMessage('pomo:start', (client: Client, m: { focusMin?: unknown; breakMin?: unknown }) => {
-      const p = this.state.players.get(client.sessionId)
-      if (p && m) pomo.start(timer, m.focusMin, m.breakMin, p.name, Date.now())
+    // Those in on a timer or some music decide who else comes in: anyone at all, or people asked by name.
+    const setOpen = (s: Shared | undefined, open: unknown) => {
+      if (!s || typeof open !== 'boolean') return
+      s.open = open
+      if (open) s.invited = ''
+    }
+    // Bringing someone in puts them straight into it, and tells them. Someone already in a timer or
+    // music of their own is not pulled out of it: they are asked, and can say yes or carry on.
+    const bring = <T extends Shared>(client: Client, all: { forEach(each: (value: T, id: string) => void): void; delete(id: string): unknown }, s: T | undefined, what: 'timer' | 'music', to: unknown) => {
+      const me = this.bySession.get(client.sessionId)
+      const them = typeof to === 'string' ? this.members.get(to) : undefined
+      if (!me || !s || !them || keysOf(s.members).includes(them.key)) return
+      if (companyOf(all, them.key)) {
+        if (invite(s, them.key)) this.tell(them.key, 'invite', { what, id: s.id, name: me.name })
+        return client.send('notice', { title: them.name, detail: what === 'timer' ? 'is on a timer of their own, so they have been asked' : 'is listening to something else, so they have been asked' })
+      }
+      for (const key of keysOf(s.members)) if (key !== me.key) this.tell(key, 'notice', { title: them.name, detail: what === 'timer' ? 'was added to your timer' : 'is now listening along with you' })
+      join(s, them.key)
+      this.tell(them.key, 'brought', { what, name: me.name })
+    }
+    this.onMessage('pomo:open', (client: Client, open: unknown) => setOpen(timerOf(client), open))
+    // With no timer running yet, bringing someone in starts the usual one for the two of you.
+    this.onMessage('pomo:bring', (client: Client, to: unknown) => {
+      if (!timerOf(client)) begin(client, (timer, by, now) => pomo.start(timer, 25, 5, by, now))
+      bring(client, timers, timerOf(client), 'timer', to)
     })
-    this.onMessage('pomo:timer', (client: Client, m: { minutes?: unknown }) => {
-      const p = this.state.players.get(client.sessionId)
-      if (p && m) pomo.startTimer(timer, m.minutes, p.name, Date.now())
+    this.onMessage('juke:open', (client: Client, open: unknown) => setOpen(stationOf(client), open))
+    this.onMessage('juke:bring', (client: Client, to: unknown) => bring(client, stations, stationOf(client), 'music', to))
+
+    // Starting a timer of your own takes you out of any you had joined.
+    const begin = (client: Client, set: (timer: pomo.Pomodoro, by: string, now: number) => boolean) => {
+      const me = this.bySession.get(client.sessionId)
+      const now = Date.now()
+      const timer = new pomo.Pomodoro()
+      pomo.reset(timer)
+      if (!me || !set(timer, me.name, now)) return
+      leave(timers, me.key)
+      timer.id = newId(now)
+      timer.members = me.key
+      timer.open = true
+      timer.invited = ''
+      timers.set(timer.id, timer)
+    }
+    this.onMessage('pomo:start', (client: Client, m: { focusMin?: unknown; breakMin?: unknown }) => m && begin(client, (timer, by, now) => pomo.start(timer, m.focusMin, m.breakMin, by, now)))
+    this.onMessage('pomo:timer', (client: Client, m: { minutes?: unknown }) => m && begin(client, (timer, by, now) => pomo.startTimer(timer, m.minutes, by, now)))
+    this.onMessage('pomo:join', (client: Client, id: unknown) => {
+      const me = this.bySession.get(client.sessionId)
+      const timer = typeof id === 'string' ? timers.get(id) : undefined
+      if (!me || !timer || keysOf(timer.members).includes(me.key) || !canJoin(timer, me.key)) return
+      leave(timers, me.key)
+      for (const key of keysOf(timer.members)) this.tell(key, 'notice', { title: me.name, detail: 'joined your timer' })
+      join(timer, me.key)
     })
-    this.onMessage('pomo:pause', () => pomo.pause(timer, Date.now()))
-    this.onMessage('pomo:resume', () => pomo.resume(timer, Date.now()))
-    this.onMessage('pomo:skip', () => pomo.skip(timer, Date.now()))
-    this.onMessage('pomo:stop', () => pomo.reset(timer))
+    this.onMessage('pomo:leave', (client: Client) => leave(timers, this.bySession.get(client.sessionId)?.key ?? ''))
+    // Everyone in on a timer keeps the same time, so any of them can hold or move it.
+    this.onMessage('pomo:pause', (client: Client) => {
+      const timer = timerOf(client)
+      if (timer) pomo.pause(timer, Date.now())
+    })
+    this.onMessage('pomo:resume', (client: Client) => {
+      const timer = timerOf(client)
+      if (timer) pomo.resume(timer, Date.now())
+    })
+    this.onMessage('pomo:skip', (client: Client) => {
+      const timer = timerOf(client)
+      if (timer) pomo.skip(timer, Date.now())
+    })
 
     // Ringing someone: asks them to come and sit in on a call in the caller's room.
     this.onMessage('ring', (client: Client, m: { to?: unknown; zone?: unknown }) => {
@@ -490,32 +572,54 @@ export class OfficeRoom extends Room {
     // Lets clients line their clocks up with ours so everyone hears the same moment.
     this.onMessage('clock', (client: Client, t0: unknown) => client.send('clock', { t0, now: Date.now() }))
 
+    // Putting a song on when you are not listening to anything starts music of your own.
     this.onMessage('juke:add', (client: Client, raw: unknown) => {
-      const p = this.state.players.get(client.sessionId)
+      const me = this.bySession.get(client.sessionId)
       const videoId = typeof raw === 'string' ? parseYouTubeId(raw) : null
-      if (!p || !videoId) return client.send('juke:error', 'That does not look like a YouTube link.')
-      const addedBy = p.name
+      if (!me || !videoId) return client.send('juke:error', 'That does not look like a YouTube link.')
       // Title lookups take a moment; chaining them keeps the queue in the order people asked.
       this.adds = this.adds.then(async () => {
         const title = await this.lookupTitle(videoId)
-        if (!juke.add(jb, { videoId, title, addedBy }, Date.now())) return client.send('juke:error', 'The queue is full.')
-        const member = this.bySession.get(client.sessionId)
-        if (member) count(member, 'songs')
+        if (!me.sessions.size) return
+        const now = Date.now()
+        let jb = companyOf(stations, me.key)
+        if (!jb) {
+          jb = new juke.Jukebox()
+          jb.id = newId(now)
+          jb.host = me.name
+          jb.members = me.key
+          jb.open = true
+          jb.invited = ''
+          stations.set(jb.id, jb)
+        }
+        if (!juke.add(jb, { videoId, title, addedBy: me.name }, now)) return client.send('juke:error', 'The queue is full.')
+        count(me, 'songs')
       })
     })
-    this.onMessage('juke:skip', () => juke.skip(jb, Date.now()))
-    this.onMessage('juke:remove', (_c: Client, id: unknown) => typeof id === 'string' && juke.remove(jb, id, Date.now()))
-    this.onMessage('juke:pause', () => juke.pause(jb, Date.now()))
-    this.onMessage('juke:play', () => juke.play(jb, Date.now()))
-    this.onMessage('juke:seek', (_c: Client, s: unknown) => typeof s === 'number' && juke.seek(jb, s, Date.now()))
+    this.onMessage('juke:join', (client: Client, id: unknown) => {
+      const me = this.bySession.get(client.sessionId)
+      const jb = typeof id === 'string' ? stations.get(id) : undefined
+      if (!me || !jb || keysOf(jb.members).includes(me.key) || !canJoin(jb, me.key)) return
+      leave(stations, me.key)
+      for (const key of keysOf(jb.members)) this.tell(key, 'notice', { title: me.name, detail: 'is listening along with you' })
+      join(jb, me.key)
+    })
+    this.onMessage('juke:leave', (client: Client) => leave(stations, this.bySession.get(client.sessionId)?.key ?? ''))
+    const listening = (client: Client, change: (jb: juke.Jukebox, now: number) => void) => {
+      const jb = stationOf(client)
+      if (jb) change(jb, Date.now())
+    }
+    this.onMessage('juke:skip', (client: Client) => listening(client, juke.skip))
+    this.onMessage('juke:remove', (client: Client, id: unknown) => typeof id === 'string' && listening(client, (jb, now) => juke.remove(jb, id, now)))
+    this.onMessage('juke:pause', (client: Client) => listening(client, juke.pause))
+    this.onMessage('juke:play', (client: Client) => listening(client, juke.play))
+    this.onMessage('juke:seek', (client: Client, s: unknown) => typeof s === 'number' && listening(client, (jb, now) => juke.seek(jb, s, now)))
     // Players report what their embed learned about the current track.
-    this.onMessage('juke:duration', (_c: Client, m: { id?: string; duration?: number }) => {
-      const cur = jb.queue[0]
+    this.onMessage('juke:duration', (client: Client, m: { id?: string; duration?: number }) => {
+      const cur = stationOf(client)?.queue[0]
       if (cur && m && cur.id === m.id && !cur.duration && typeof m.duration === 'number' && m.duration > 0 && m.duration < 86400) cur.duration = m.duration
     })
-    this.onMessage('juke:ended', (_c: Client, id: unknown) => {
-      if (jb.queue[0]?.id === id) juke.skip(jb, Date.now())
-    })
+    this.onMessage('juke:ended', (client: Client, id: unknown) => listening(client, (jb, now) => jb.queue[0]?.id === id && juke.skip(jb, now)))
 
     this.onMessage('emote', (client: Client, raw: unknown) => {
       if (typeof raw === 'string' && EMOTES.has(raw)) this.broadcast('emote', { id: client.sessionId, emote: raw })
@@ -663,7 +767,7 @@ export class OfficeRoom extends Room {
       this.tell(m.key, 'alarm:ring', { at: m.alarmAt, label: m.alarmLabel, missed: false })
       this.endAlarm(m)
     }
-    // Time together: people seated in the same call, and everyone here during a shared focus session.
+    // Time together: people seated in the same call, and people focusing on the same timer.
     const together = (keys: string[], what: 'callSeconds' | 'focusSeconds') => {
       for (let i = 0; i < keys.length; i++) for (let j = i + 1; j < keys.length; j++) this.bond(keys[i], keys[j])[what] += elapsed
     }
@@ -672,8 +776,9 @@ export class OfficeRoom extends Room {
       if (inCall.has(p.member) && p.seat) calls.set(p.zone, (calls.get(p.zone) ?? new Set()).add(p.member))
     })
     for (const keys of calls.values()) together([...keys], 'callSeconds')
-    const timer = this.state.pomodoro
-    if (timer?.phase === 'focus' && !timer.paused) together([...this.members.keys()], 'focusSeconds')
+    this.state.pomodoros.forEach((timer) => {
+      if (timer.phase === 'focus' && !timer.paused) together(keysOf(timer.members).filter((key) => this.members.has(key)), 'focusSeconds')
+    })
     if (now - this.lastPush >= PUSH_MS) {
       this.lastPush = now
       for (const m of this.members.values()) this.tell(m.key, 'progress', m.progress)
@@ -719,24 +824,37 @@ export class OfficeRoom extends Room {
     return zones
   }
 
-  // While a shared focus session is running, everyone present is growing their plant.
+  // Takes someone out of the timer and the music they were in.
+  private leaveCompany(key: string) {
+    leave(this.state.pomodoros, key)
+    leave(this.state.jukeboxes, key)
+  }
+
+  // While the focus session someone is in is running, they are growing their plant.
   // Time is banked every second and planted in batches, so the garden does not flicker with updates.
-  private tendGarden(timer: pomo.Pomodoro, now: number) {
+  private tendGarden(now: number) {
     const elapsed = Math.min((now - this.lastTend) / 1000, 5)
     this.lastTend = now
-    if (timer.phase === 'focus' && !timer.paused) this.unplanted += elapsed
-    if (this.unplanted >= 10 || (this.unplanted > 0 && timer.phase !== 'focus')) {
+    const focusing = new Set<string>()
+    this.state.pomodoros.forEach((timer) => {
+      if (timer.phase === 'focus' && !timer.paused) for (const key of keysOf(timer.members)) if (this.members.has(key)) focusing.add(key)
+    })
+    for (const key of focusing) this.unplanted.set(key, (this.unplanted.get(key) ?? 0) + elapsed)
+    let planted = false
+    for (const [key, seconds] of this.unplanted) {
+      if (seconds < 10 && focusing.has(key)) continue
+      this.unplanted.delete(key)
+      const m = this.members.get(key)
+      if (!m) continue
       // The time goes on the member, where it is kept for good, and into their bed if they have one.
-      for (const m of this.members.values()) {
-        m.focusSeconds += this.unplanted
-        m.dirty = true
-      }
-      garden.credit(this.state.garden, [...this.members.values()].map(gardener), this.unplanted)
-      this.unplanted = 0
-      if (!db && (now - this.lastGardenSave > 60_000 || timer.phase !== 'focus')) {
-        this.lastGardenSave = now
-        this.gardenStore.save(this.state.garden)
-      }
+      m.focusSeconds += seconds
+      m.dirty = true
+      garden.credit(this.state.garden, [gardener(m)], seconds)
+      planted = true
+    }
+    if (planted && !db && (now - this.lastGardenSave > 60_000 || !focusing.size)) {
+      this.lastGardenSave = now
+      this.gardenStore.save(this.state.garden)
     }
   }
 
@@ -781,6 +899,7 @@ export class OfficeRoom extends Room {
     let member = this.members.get(key)
     if (!member) this.members.set(key, (member = newMember(key, false, name, cleanProgress(options.carry))))
     member.sessions.add(sessionId)
+    this.away.delete(key)
     member.tzOffset = cleanOffset(options.tzOffset)
     if (member.name !== name) member.dirty = true
     member.name = name
@@ -859,6 +978,9 @@ export class OfficeRoom extends Room {
     member.sessions.delete(client.sessionId)
     if (member.sessions.size) return
     this.members.delete(member.key)
+    // An account may only be reloading the page; a guest's key will never be seen again.
+    if (member.account) this.away.set(member.key, Date.now())
+    else this.leaveCompany(member.key)
     member.dirty = true
     this.saveMembers([member])
   }

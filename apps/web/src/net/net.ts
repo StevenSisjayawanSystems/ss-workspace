@@ -67,16 +67,26 @@ export interface JukeTrack {
   duration: number
 }
 
-// Mirrors the server jukebox: queue[0] is playing; position is derived from startedAt on the server clock.
+// Mirrors one person's music on the server: queue[0] is playing; position is derived from startedAt
+// on the server clock. `host` is the name of who put it on, `members` the keys of everyone listening.
 export interface JukeState {
+  id: string
+  host: string
+  members: string[]
+  // Whether anyone may tune in; otherwise only people invited by name.
+  open: boolean
   queue: JukeTrack[]
   startedAt: number
   paused: boolean
   pausedAt: number
 }
 
-// Mirrors the server's shared focus timer.
+// Mirrors one person's timer on the server. `members` are the keys of everyone in on it.
 export interface PomoState {
+  id: string
+  members: string[]
+  // Whether anyone may join; otherwise only people invited by name.
+  open: boolean
   // 'timer' is a plain one-off countdown; `focusMin` then holds its length.
   phase: 'idle' | 'focus' | 'break' | 'timer'
   endsAt: number
@@ -87,7 +97,14 @@ export interface PomoState {
   round: number
   startedBy: string
 }
-const NO_TIMER: PomoState = { phase: 'idle', endsAt: 0, paused: false, remainingMs: 0, focusMin: 25, breakMin: 5, round: 0, startedBy: '' }
+const NO_TIMER: PomoState = { id: '', members: [], open: true, phase: 'idle', endsAt: 0, paused: false, remainingMs: 0, focusMin: 25, breakMin: 5, round: 0, startedBy: '' }
+
+// Someone asking us into their timer or their music.
+export interface Invite {
+  what: 'timer' | 'music'
+  id: string
+  name: string
+}
 
 // Someone asking us to come and join their call.
 export interface Ring {
@@ -178,7 +195,11 @@ interface NetState {
   // Bulletin board notes, oldest first; and what each other person says they are up to.
   notes: NoteItem[]
   statuses: Record<string, string>
+  // The timer we are in on (idle when none), and other people's that we could join.
   pomo: PomoState
+  timers: PomoState[]
+  // Invitations to a timer or to music that we have not answered yet.
+  invites: Invite[]
   ringing: Ring | null
   // Set when the server turned us away for lack of an invite code after we were already inside.
   inviteNeeded: boolean
@@ -201,7 +222,9 @@ interface NetState {
   // Other people's to-dos we have opened: the lists they share with us, and the sessions they have closed.
   tasksOf: Record<string, { lists: TaskList[]; categories: TaskCategory[]; sessions: TaskSession[] }>
   selfJoinedAt: number
+  // The music we are listening to (empty when none), and other people's that we could tune in to.
   juke: JukeState
+  stations: JukeState[]
   jukeError: string | null
   status: 'offline' | 'connecting' | 'online'
   selfId: string | null
@@ -210,9 +233,9 @@ interface NetState {
   bubbles: Record<string, { text: string; until: number }>
 }
 
-const NO_MUSIC: JukeState = { queue: [], startedAt: 0, paused: false, pausedAt: 0 }
+const NO_MUSIC: JukeState = { id: '', host: '', members: [], open: true, queue: [], startedAt: 0, paused: false, pausedAt: 0 }
 
-export const useNet = create<NetState>(() => ({ me: '', account: false, seenAt: 0, since: 0, about: '', people: [], bonds: {}, streaks: {}, alarm: { at: 0, label: '' }, alarmRinging: null, tasks: { lists: [], categories: [], bonusLeft: 0 }, tasksOf: {}, talk: '', talks: [], unread: {}, loginNeeded: false, inviteNeeded: false, garden: [], desks: {}, bookings: [], closed: {}, knock: null, notes: [], statuses: {}, pomo: NO_TIMER, ringing: null, inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
+export const useNet = create<NetState>(() => ({ me: '', account: false, seenAt: 0, since: 0, about: '', people: [], bonds: {}, streaks: {}, alarm: { at: 0, label: '' }, alarmRinging: null, tasks: { lists: [], categories: [], bonusLeft: 0 }, tasksOf: {}, talk: '', talks: [], unread: {}, loginNeeded: false, inviteNeeded: false, garden: [], desks: {}, bookings: [], closed: {}, knock: null, notes: [], statuses: {}, pomo: NO_TIMER, timers: [], stations: [], invites: [], ringing: null, inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
 
 const SEND_MS = 80
 const MAX_CHAT = 400
@@ -248,17 +271,25 @@ let clockOffset = 0
 // Current time on the server's clock, so every client computes the same song position.
 export const serverNow = () => Date.now() + clockOffset
 
+const keysOf = (members: unknown) => (typeof members === 'string' && members ? members.split(' ') : [])
+
+// Of everyone's music, ours is the one we are among the listeners of.
 let jukeKey = ''
 function syncJukebox(state: any) {
-  const j = state.jukebox
-  if (!j) return
-  const queue: JukeTrack[] = []
-  j.queue?.forEach((t: any) => queue.push({ id: t.id, videoId: t.videoId, title: t.title, addedBy: t.addedBy, duration: t.duration }))
-  const juke: JukeState = { queue, startedAt: j.startedAt ?? 0, paused: !!j.paused, pausedAt: j.pausedAt ?? 0 }
-  const key = JSON.stringify(juke)
+  const me = useNet.getState().me
+  let juke = NO_MUSIC
+  const stations: JukeState[] = []
+  state.jukeboxes?.forEach((j: any) => {
+    const queue: JukeTrack[] = []
+    j.queue?.forEach((t: any) => queue.push({ id: t.id, videoId: t.videoId, title: t.title, addedBy: t.addedBy, duration: t.duration }))
+    const one: JukeState = { id: j.id, host: j.host ?? '', members: keysOf(j.members), open: !!j.open, queue, startedAt: j.startedAt ?? 0, paused: !!j.paused, pausedAt: j.pausedAt ?? 0 }
+    if (me && one.members.includes(me)) juke = one
+    else if (queue.length && (one.open || keysOf(j.invited).includes(me))) stations.push(one)
+  })
+  const key = JSON.stringify([juke, stations])
   if (key === jukeKey) return
   jukeKey = key
-  useNet.setState({ juke })
+  useNet.setState({ juke, stations })
 }
 
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((v, i) => v === b[i])
@@ -357,22 +388,19 @@ function syncReservations(state: any) {
 
 let pomoKey = ''
 function syncPomodoro(state: any) {
-  const p = state.pomodoro
-  if (!p) return
-  const pomo: PomoState = {
-    phase: p.phase === 'focus' || p.phase === 'break' || p.phase === 'timer' ? p.phase : 'idle',
-    endsAt: p.endsAt ?? 0,
-    paused: !!p.paused,
-    remainingMs: p.remainingMs ?? 0,
-    focusMin: p.focusMin || 25,
-    breakMin: p.breakMin ?? 5,
-    round: p.round ?? 0,
-    startedBy: p.startedBy ?? '',
-  }
-  const key = JSON.stringify(pomo)
+  const me = useNet.getState().me
+  let pomo = NO_TIMER
+  const timers: PomoState[] = []
+  state.pomodoros?.forEach((p: any) => {
+    if (p.phase !== 'focus' && p.phase !== 'break' && p.phase !== 'timer') return
+    const one: PomoState = { id: p.id, members: keysOf(p.members), open: !!p.open, phase: p.phase, endsAt: p.endsAt ?? 0, paused: !!p.paused, remainingMs: p.remainingMs ?? 0, focusMin: p.focusMin || 25, breakMin: p.breakMin ?? 5, round: p.round ?? 0, startedBy: p.startedBy ?? '' }
+    if (me && one.members.includes(me)) pomo = one
+    else if (one.open || keysOf(p.invited).includes(me)) timers.push(one)
+  })
+  const key = JSON.stringify([pomo, timers])
   if (key === pomoKey) return
   pomoKey = key
-  useNet.setState({ pomo })
+  useNet.setState({ pomo, timers })
 }
 
 // Bumped when someone already here changes their name or look, so lists and avatars redraw.
@@ -459,7 +487,7 @@ function disconnected(profile: Profile) {
   alarmBell.stop()
   room = null
   remotes.clear()
-  useNet.setState({ status: 'offline', selfId: null, ids: [], juke: NO_MUSIC, pomo: NO_TIMER, ringing: null, alarmRinging: null, knock: null, desks: {}, bookings: [], closed: {}, inCall: false, call: [], taken: {}, ranks: {} })
+  useNet.setState({ status: 'offline', selfId: null, ids: [], juke: NO_MUSIC, stations: [], pomo: NO_TIMER, timers: [], invites: [], ringing: null, alarmRinging: null, knock: null, desks: {}, bookings: [], closed: {}, inCall: false, call: [], taken: {}, ranks: {} })
   useGame.setState({ seat: null, pendingSeat: null })
   clearTimeout(retryTimer)
   retryTimer = setTimeout(async () => {
@@ -531,6 +559,15 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
       else if (m.finished === 'focus') announce('Break time', 'Focus session complete')
       else announce('Back to focus', 'Break is over')
     })
+    joined.onMessage('invite', (m: Invite) => {
+      ping()
+      useNet.setState((s) => ({ invites: [...s.invites.filter((i) => i.id !== m.id), m] }))
+    })
+    // Someone put us straight into their timer or their music.
+    joined.onMessage('brought', (m: { what: 'timer' | 'music'; name: string }) => {
+      ping()
+      announce(m.name, m.what === 'timer' ? 'added you to their timer' : 'put their music on for you')
+    })
     joined.onMessage('notice', (m: { title: string; detail: string }) => announce(m.title, m.detail))
     joined.onMessage('knock', (m: Knock) => {
       if (useNet.getState().knock) return
@@ -564,6 +601,9 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
     joined.onMessage('me', (m: { member: string; account: boolean; seenAt: number }) => {
       arriving = true
       useNet.setState({ me: m.member, account: m.account, seenAt: m.seenAt })
+      // Which timer and music are ours depends on who we are.
+      syncJukebox(joined.state)
+      syncPomodoro(joined.state)
     })
     joined.onMessage('progress', (p: Progress) => {
       receive(p, useNet.getState().account, arriving)
@@ -797,10 +837,13 @@ export const todo = {
   add: (list: string, title: string, category = '') => room?.send('task:add', { list, title, category }),
   edit: (id: string, title: string) => room?.send('task:edit', { id, title }),
   tag: (id: string, category: string) => room?.send('task:tag', { id, category }),
+  // Says how pressing a task is: its priority (0 for none), the day it is due ('' for none), or its star for today.
+  plan: (id: string, plan: { priority?: number; due?: string; starred?: boolean }) => room?.send('task:plan', { id, ...plan }),
   done: (id: string, done: boolean) => room?.send('task:done', { id, done }),
   remove: (id: string) => room?.send('task:remove', id),
-  // Puts a task just before another in its list, or last when `before` is left out.
-  move: (id: string, before?: string) => room?.send('task:move', { id, before }),
+  // Puts a task just before another, or last when `before` is left out. It can be sent to another
+  // list and given a category on the way.
+  move: (id: string, before?: string, to: { list?: string; category?: string } = {}) => room?.send('task:move', { id, before, ...to }),
   clear: (list: string) => room?.send('task:clear', list),
   // Closes the session on a list: finished tasks are logged on the profile and cleared, the rest stay.
   finish: (list: string) => room?.send('task:finish', list),
@@ -833,13 +876,28 @@ export function setStatus(status: string) {
   room?.send('status', clean)
 }
 
+// Says yes or no to the oldest invitation waiting.
+export function answerInvite(accept: boolean) {
+  const [invite, ...invites] = useNet.getState().invites
+  if (!invite) return
+  useNet.setState({ invites })
+  if (accept) room?.send(invite.what === 'timer' ? 'pomo:join' : 'juke:join', invite.id)
+}
+
 export const pomodoro = {
   start: (focusMin: number, breakMin: number) => room?.send('pomo:start', { focusMin, breakMin }),
   timer: (minutes: number) => room?.send('pomo:timer', { minutes }),
   pause: () => room?.send('pomo:pause'),
   resume: () => room?.send('pomo:resume'),
   skip: () => room?.send('pomo:skip'),
-  stop: () => room?.send('pomo:stop'),
+  // Lets anyone join the timer we are in on, or only people we bring in.
+  open: (open: boolean) => room?.send('pomo:open', open),
+  // Adds someone to our timer, starting a 25/5 one if none is running. Someone on a timer of their own is asked instead.
+  bring: (member: string) => room?.send('pomo:bring', member),
+  // Joins someone else's timer, leaving our own.
+  join: (id: string) => room?.send('pomo:join', id),
+  // Leaves the timer we are in on; it ends when nobody is left in it.
+  leave: () => room?.send('pomo:leave'),
 }
 
 let rtcHandler: ((from: string, data: any) => void) | undefined
@@ -871,6 +929,11 @@ export function everyone(): (Person & { here: boolean })[] {
   if (me && mine) all.set(me, { id: me, name: mine, here: true })
   return [...all.values()].sort((a, b) => Number(b.here) - Number(a.here) || a.name.localeCompare(b.name))
 }
+// The names of these members, for saying who is in on a timer or listening along.
+export function namesOf(keys: string[]): string[] {
+  const names = new Map(everyone().map((p) => [p.id, p.name]))
+  return keys.map((k) => names.get(k)).filter((n): n is string => !!n)
+}
 export const sendEmote = (emote: Emote) => room?.send('emote', emote)
 
 export const jukebox = {
@@ -878,6 +941,12 @@ export const jukebox = {
     if (!room) return
     room.send('juke:add', url)
   },
+  open: (open: boolean) => room?.send('juke:open', open),
+  // Puts our music on for someone. Someone listening to their own is asked instead.
+  bring: (member: string) => room?.send('juke:bring', member),
+  // Tunes in to someone else's music, or stops listening to what we are tuned in to.
+  join: (id: string) => room?.send('juke:join', id),
+  leave: () => room?.send('juke:leave'),
   skip: () => room?.send('juke:skip'),
   remove: (id: string) => room?.send('juke:remove', id),
   pause: () => room?.send('juke:pause'),
