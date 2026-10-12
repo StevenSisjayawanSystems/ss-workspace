@@ -57,14 +57,25 @@ function useWalls() {
           hedgeTop.push({ p: [x, HEDGE, z], s: [0.86, 0.16, 0.86] })
         }
         if (t !== 'wall') continue
+        if (z === 24 && (x === 11 || x === 13)) continue
         const h = open(x - 1, z) || open(x, z - 1) || open(x - 1, z - 1) ? LOW : TALL
         const parts: [number, number, number, number][] = skip.has(`${x},${z}`) ? [] : [[x, z, THICK, THICK]]
         const arm = 0.5 - THICK / 2
         for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const n = tileAt(x + dx, z + dz)
+          const nx = x + dx
+          const nz = z + dz
+          const n = tileAt(nx, nz)
           if (n !== 'wall' && n !== 'door') continue
-          const off = THICK / 2 + arm / 2
-          parts.push([x + dx * off, z + dz * off, dx ? arm : THICK, dz ? arm : THICK])
+
+          const isFocusGardenSideArm =
+            z === 24 &&
+            ((x === 10 && nx === 11) || (x === 14 && nx === 13))
+
+          if (nz === 24 && (nx === 11 || nx === 12 || nx === 13) && !isFocusGardenSideArm) continue
+
+          const segment = isFocusGardenSideArm ? 0.80 : arm
+          const off = THICK / 2 + segment / 2
+          parts.push([x + dx * off, z + dz * off, dx ? segment : THICK, dz ? segment : THICK])
         }
         if (h === TALL) {
           const face = THICK / 2 + 0.025
@@ -178,11 +189,28 @@ function DoorKnob({ x }: { x: number }) {
   )
 }
 
-function GardenDoubleEntrance() {
+function WoodPlankLeaf({ centerX }: { centerX: number }) {
+  const doorMaterial = toon('#8b5a3c')
+
+  return (
+    <>
+      {[-0.315, -0.105, 0.105, 0.315].map((px) => (
+        <mesh
+          key={px}
+          position={[centerX + px, 0.95, 0]}
+          material={doorMaterial}
+          castShadow
+        >
+          <boxGeometry args={[0.198, 1.9, 0.09]} />
+        </mesh>
+      ))}
+    </>
+  )
+}
+
+function WoodPlankDoubleEntrance({ x, z, rotationY = Math.PI / 2 }: { x: number; z: number; rotationY?: number }) {
   const leftLeaf = useRef<THREE.Group>(null!)
   const rightLeaf = useRef<THREE.Group>(null!)
-  const x = 24
-  const z = 11.5
 
   useFrame((_, dt) => {
     const near = Math.hypot(player.x - x, player.z - z) < 2.4
@@ -191,11 +219,10 @@ function GardenDoubleEntrance() {
     rightLeaf.current.rotation.y = THREE.MathUtils.damp(rightLeaf.current.rotation.y, -angle, 8, dt)
   })
 
-  const doorMaterial = toon('#8b5a3c')
   const frameMaterial = toon(PAL.woodDark)
 
   return (
-    <group position={[x, 0, z]} rotation-y={Math.PI / 2}>
+    <group position={[x, 0, z]} rotation-y={rotationY}>
       <mesh position={[0, 0.005, 0]} rotation-x={-Math.PI / 2} material={toon(PAL.wood)} receiveShadow>
         <planeGeometry args={[2, 1]} />
       </mesh>
@@ -211,17 +238,58 @@ function GardenDoubleEntrance() {
       </mesh>
 
       <group ref={leftLeaf} position={[-0.87, 0, 0]}>
-        <mesh position={[0.435, 0.95, 0]} material={doorMaterial} castShadow>
-          <boxGeometry args={[0.87, 1.9, 0.09]} />
-        </mesh>
+        <WoodPlankLeaf centerX={0.435} />
         <DoorKnob x={0.695} />
       </group>
 
       <group ref={rightLeaf} position={[0.87, 0, 0]}>
-        <mesh position={[-0.435, 0.95, 0]} material={doorMaterial} castShadow>
-          <boxGeometry args={[0.87, 1.9, 0.09]} />
-        </mesh>
+        <WoodPlankLeaf centerX={-0.435} />
         <DoorKnob x={-0.695} />
+      </group>
+    </group>
+  )
+}
+
+function WoodPlankSingleEntrance({ x, z }: { x: number; z: number }) {
+  const leftLeaf = useRef<THREE.Group>(null!)
+  const rightLeaf = useRef<THREE.Group>(null!)
+  const alongX = tileAt(x - 1, z) !== 'floor' && tileAt(x + 1, z) !== 'floor'
+
+  useFrame((_, dt) => {
+    const near = Math.hypot(player.x - x, player.z - z) < 1.9
+    const angle = near ? 1.35 : 0
+    leftLeaf.current.rotation.y = THREE.MathUtils.damp(leftLeaf.current.rotation.y, angle, 8, dt)
+    rightLeaf.current.rotation.y = THREE.MathUtils.damp(rightLeaf.current.rotation.y, -angle, 8, dt)
+  })
+
+  return (
+    <group position={[x, 0, z]} rotation-y={alongX ? 0 : Math.PI / 2}>
+      <mesh position={[0, 0.005, 0]} rotation-x={-Math.PI / 2} material={toon(PAL.wood)} receiveShadow>
+        <planeGeometry args={[1, 1]} />
+      </mesh>
+
+      {[-0.46, 0.46].map((px) => (
+        <mesh key={px} position={[px, 1, 0]} material={toon(PAL.woodDark)} castShadow>
+          <boxGeometry args={[0.14, 2, 0.52]} />
+        </mesh>
+      ))}
+
+      <mesh position={[0, 2.06, 0]} material={toon(PAL.woodDark)} castShadow>
+        <boxGeometry args={[1.2, 0.2, 0.58]} />
+      </mesh>
+
+      <group ref={leftLeaf} position={[-0.39, 0, 0]}>
+        <group scale-x={0.5}>
+          <WoodPlankLeaf centerX={0.39} />
+        </group>
+        <DoorKnob x={0.31} />
+      </group>
+
+      <group ref={rightLeaf} position={[0.39, 0, 0]}>
+        <group scale-x={0.5}>
+          <WoodPlankLeaf centerX={-0.39} />
+        </group>
+        <DoorKnob x={-0.31} />
       </group>
     </group>
   )
@@ -289,10 +357,15 @@ export function Building() {
       <Roof />
       <Boxes items={walls.hedge} color={PAL.hedge} />
       <Boxes items={walls.hedgeTop} color={PAL.leafLight} />
-      {DOORS.filter((d) => !(d.x === 24 && (d.z === 11 || d.z === 12))).map((d) => (
+      {DOORS.filter(
+        (d) =>
+          !(d.x === 24 && (d.z === 11 || d.z === 12)) &&
+          !(d.z === 24 && (d.x === 11 || d.x === 12 || d.x === 13)),
+      ).map((d) => (
         <Door key={`${d.x},${d.z}`} x={d.x} z={d.z} />
       ))}
-      <GardenDoubleEntrance />
+      <WoodPlankDoubleEntrance x={24} z={11.5} />
+      <WoodPlankDoubleEntrance x={12} z={24} rotationY={0} />
       {WALL_DECOR.map((d) =>
         d.type === 'frontDoor' ? (
           <Door key={`${d.x},${d.z}`} x={d.x} z={d.z} locked />
