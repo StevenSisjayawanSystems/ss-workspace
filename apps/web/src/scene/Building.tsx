@@ -154,7 +154,7 @@ function Door({ x, z, locked = false }: { x: number; z: number; locked?: boolean
   const shut = useNet((s) => !!zone && !!s.closed[zone])
   useFrame((_, dt) => {
     const near = !locked && !shut && Math.hypot(player.x - x, player.z - z) < 1.9
-    leaf.current.rotation.y = THREE.MathUtils.damp(leaf.current.rotation.y, near ? -1.9 : 0, 8, dt)
+    leaf.current.rotation.y = THREE.MathUtils.damp(leaf.current.rotation.y, near ? -1.7 : 0, 8, dt)
   })
   return (
     <group position={[x, 0, z]} rotation-y={alongX ? 0 : Math.PI / 2}>
@@ -211,12 +211,11 @@ function WoodPlankLeaf({ centerX }: { centerX: number }) {
 function WoodPlankDoubleEntrance({ x, z, rotationY = Math.PI / 2 }: { x: number; z: number; rotationY?: number }) {
   const leftLeaf = useRef<THREE.Group>(null!)
   const rightLeaf = useRef<THREE.Group>(null!)
-
   useFrame((_, dt) => {
     const near = Math.hypot(player.x - x, player.z - z) < 2.4
-    const angle = near ? 1.35 : 0
-    leftLeaf.current.rotation.y = THREE.MathUtils.damp(leftLeaf.current.rotation.y, angle, 8, dt)
-    rightLeaf.current.rotation.y = THREE.MathUtils.damp(rightLeaf.current.rotation.y, -angle, 8, dt)
+    const angle = near ? 1.7 : 0
+    leftLeaf.current.rotation.y = THREE.MathUtils.damp(leftLeaf.current.rotation.y, -angle, 8, dt)
+    rightLeaf.current.rotation.y = THREE.MathUtils.damp(rightLeaf.current.rotation.y, angle, 8, dt)
   })
 
   const frameMaterial = toon(PAL.woodDark)
