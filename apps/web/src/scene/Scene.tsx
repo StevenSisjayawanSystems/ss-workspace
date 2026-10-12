@@ -1,5 +1,5 @@
 import { useMemo, useRef } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Sparkles } from '@react-three/drei'
 import { Bloom, EffectComposer, HueSaturation, Vignette } from '@react-three/postprocessing'
 import * as THREE from 'three'
@@ -8,6 +8,7 @@ import { Building } from './Building'
 import { CameraRig } from './CameraRig'
 import { Bush, FurnitureLayer, Piece, Rock } from './Furniture'
 import { Ink } from './Ink'
+import { labelOverlayScene } from './Label'
 import { CloudShadows, Grass, Path, Wildflowers } from './Nature'
 import { Player } from './Player'
 import { Remotes } from './Remotes'
@@ -103,6 +104,15 @@ const BUSHES: [number, number, number][] = [
 ]
 const ROCKS: [number, number, number][] = [[-5.5, 5.5, 1.3], [8, -6, 1.6], [31.5, -5.5, 1.2], [-6, 25, 1.1], [12.5, 34.5, 0.8], [37.5, 23.5, 1.3]]
 
+function LabelOverlayRenderer() {
+  const { gl, camera } = useThree()
+  useFrame(() => {
+    gl.autoClear = false
+    gl.render(labelOverlayScene, camera)
+  }, 2)
+  return null
+}
+
 export function Scene({ profile }: { profile: Profile | null }) {
   const bloom = useRef<any>(null)
   const vignette = useRef<any>(null)
@@ -148,12 +158,13 @@ export function Scene({ profile }: { profile: Profile | null }) {
       <Sparkles position={[29, 1.3, 12]} scale={[9, 1.6, 23]} count={45} size={14} speed={0.35} color="#fff3a0" />
       <Sparkles position={[12, 1.4, 12]} scale={[23, 1.8, 23]} count={70} size={6} speed={0.2} opacity={0.5} color="#fff8e0" />
       <CameraRig tour={!profile} />
-      <EffectComposer multisampling={8}>
+      <EffectComposer multisampling={8} autoClear={false}>
         <Ink />
         <Bloom ref={bloom} mipmapBlur luminanceThreshold={1} luminanceSmoothing={0.2} intensity={0.45} />
         <HueSaturation saturation={0.04} />
         <Vignette ref={vignette} offset={0.22} darkness={0.55} />
       </EffectComposer>
+      <LabelOverlayRenderer />
     </Canvas>
   )
 }

@@ -168,8 +168,7 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
         <mesh position={[0, 0.7, 0]} visible={false} onPointerOver={overSelf} onPointerOut={outSelf} onClick={clickSelf}>
           <cylinderGeometry args={[0.34, 0.34, 1.4, 10]} />
         </mesh>
-        {hover && !bubble && <Label text="Your profile" y={look.hat ? 2.08 : 1.82} />}
-      </group>
+        {hover && !bubble && <Label text="Your profile" y={look.hat ? 2.35 : 2.09} />}›      </group>
     </>
   )
 }
