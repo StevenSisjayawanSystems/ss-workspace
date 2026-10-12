@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 
 const FONT = "'Nunito', 'Avenir Next', system-ui, sans-serif"
 const RES = 4 // texture pixels per CSS-like pixel, for crisp text when zoomed in
 const PX_PER_UNIT = 58
+
+export const labelOverlayScene = new THREE.Scene()
 
 function wrap(g: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
   const lines: string[] = []
@@ -85,6 +88,8 @@ function draw(text: string, bubble: boolean) {
 export function Label({ text, y, bubble = false }: { text: string; y: number; bubble?: boolean }) {
   // Redraw once the web font has arrived, otherwise the first labels keep the fallback face.
   const [fonts, setFonts] = useState(0)
+  const anchor = useRef<THREE.Group>(null!)
+  const sprite = useRef<THREE.Sprite>(null!)
   useEffect(() => {
     let alive = true
     document.fonts?.ready.then(() => alive && setFonts(1))
@@ -94,9 +99,26 @@ export function Label({ text, y, bubble = false }: { text: string; y: number; bu
   }, [])
   const { texture, w, h } = useMemo(() => draw(text, bubble), [text, bubble, fonts])
   useEffect(() => () => texture.dispose(), [texture])
+  useFrame(() => {
+    if (!anchor.current || !sprite.current) return
+    anchor.current.getWorldPosition(sprite.current.position)
+  })
   return (
-    <sprite position={[0, y + h / PX_PER_UNIT / 2, 0]} scale={[w / PX_PER_UNIT, h / PX_PER_UNIT, 1]} renderOrder={bubble ? 11 : 10}>
-      <spriteMaterial map={texture} transparent depthTest={false} depthWrite={false} toneMapped={false} />
-    </sprite>
+    <>
+      <group ref={anchor} position={[0, y + h / PX_PER_UNIT / 2, 0]} />
+      {createPortal(
+        <sprite ref={sprite} scale={[w / PX_PER_UNIT, h / PX_PER_UNIT, 1]} renderOrder={bubble ? 11 : 10}>
+          <spriteMaterial
+            map={texture}
+            transparent
+            alphaTest={0.5}
+            depthTest={false}
+            depthWrite={false}
+            toneMapped={false}
+          />
+        </sprite>,
+        labelOverlayScene,
+      )}
+    </>
   )
 }
