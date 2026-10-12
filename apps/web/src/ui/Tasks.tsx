@@ -204,6 +204,8 @@ export function Tasks() {
   const full = list.tasks.length >= MAX_TASKS
   const categoryOf = (id: string) => categories.find((c) => c.id === id)
   const focused = new Set(focusTasks(lists, focus).map((t) => t.id))
+  // A finished task can be carried to another list, but has no place among the ones still to do.
+  const sorting = !!carried && !list.tasks.find((t) => t.id === carried)?.done
 
   const add = (e: FormEvent) => {
     e.preventDefault()
@@ -243,30 +245,28 @@ export function Tasks() {
       <li
         key={task.id}
         className={`task ${task.done ? 'done' : ''} ${lingering.has(task.id) ? 'lingering' : ''} ${over === task.id && carried !== task.id ? 'over' : ''} ${carried === task.id ? 'carried' : ''} ${focused.has(task.id) ? 'focus' : ''}`}
-        draggable={!task.done && editing !== task.id}
+        draggable={editing !== task.id}
         onDragStart={(e) => {
           e.dataTransfer.effectAllowed = 'move'
           setCarried(task.id)
         }}
         onDragOver={(e) => {
-          if (!carried || task.done) return
+          if (!sorting || task.done) return
           e.preventDefault()
           e.stopPropagation()
           setOver(task.id)
         }}
         onDrop={(e) => {
-          if (task.done) return
+          if (!sorting || task.done) return
           e.stopPropagation()
           dropOn(task)
           endDrag()
         }}
         onDragEnd={endDrag}
       >
-        {!task.done && (
-          <span className="task-grip" title="Drag to reorder, or onto a group or another list to move it there">
-            <Icon.grip />
-          </span>
-        )}
+        <span className="task-grip" title={task.done ? 'Drag onto another list to move it there' : 'Drag to reorder, or onto a group or another list to move it there'}>
+          <Icon.grip />
+        </span>
         <button className="task-box" role="checkbox" aria-checked={task.done} aria-label={task.done ? `Mark "${task.title}" as not done` : `Mark "${task.title}" as done`} onClick={() => tick(task)}>
           {task.done && <Icon.check />}
         </button>
@@ -334,6 +334,25 @@ export function Tasks() {
             <Icon.target />
           </button>
         )}
+        {editing !== task.id && lists.length > 1 && (
+          <span className="task-tagger">
+            <button className={pop === `move:${task.id}` ? 'task-tool on' : 'task-tool'} aria-label="Move to another list" title="Move to another list" onClick={() => setPop(pop === `move:${task.id}` ? null : `move:${task.id}`)}>
+              <Icon.move />
+            </button>
+            {pop === `move:${task.id}` && (
+              <div className="tasks-pop tags">
+                {lists.map(
+                  (l) =>
+                    l.id !== list.id && (
+                      <button key={l.id} disabled={l.tasks.length >= MAX_TASKS} title={l.tasks.length >= MAX_TASKS ? 'That list is full' : undefined} onClick={() => (todo.move(task.id, undefined, { list: l.id }), setPop(null))}>
+                        {l.name}
+                      </button>
+                    ),
+                )}
+              </div>
+            )}
+          </span>
+        )}
         {editing !== task.id && (
           <button className="task-tool" aria-label="Remove this task" title="Remove this task" onClick={() => setAsk({ title: 'Remove this task?', detail: task.title, yes: 'Remove', run: () => todo.remove(task.id) })}>
             <Icon.trash />
@@ -348,10 +367,10 @@ export function Tasks() {
     group === 'priority'
       ? [...PRIORITIES, { id: 0, name: 'No priority' }].map((p) => ({ ...p, tasks: todoList.filter((t) => t.priority === p.id) }))
       : [...categories.map((c) => ({ ...c, tasks: todoList.filter((t) => t.category === c.id) })), { id: '', name: 'No category', tasks: todoList.filter((t) => !categoryOf(t.category)) }]
-  const groups = sections.filter((g) => g.tasks.length || carried)
+  const groups = sections.filter((g) => g.tasks.length || sorting)
   // Dropping a task on a group puts it in that group, at the end.
   const dropIn = (g: { id: string | number }) => {
-    if (!carried) return
+    if (!carried || !sorting) return
     if (typeof g.id === 'number') todo.plan(carried, { priority: g.id })
     else todo.tag(carried, g.id)
   }
@@ -361,9 +380,9 @@ export function Tasks() {
     body = (
       <ul
         className="tasks-open"
-        onDragOver={(e) => carried && e.preventDefault()}
+        onDragOver={(e) => sorting && e.preventDefault()}
         onDrop={(e) => {
-          if (e.target === e.currentTarget && carried) todo.move(carried)
+          if (e.target === e.currentTarget && carried && sorting) todo.move(carried)
           endDrag()
         }}
       >
@@ -376,7 +395,7 @@ export function Tasks() {
         key={g.id}
         className={`tasks-group ${over === `group:${g.id}` ? 'over' : ''}`}
         onDragOver={(e) => {
-          if (!carried) return
+          if (!sorting) return
           e.preventDefault()
           setOver(`group:${g.id}`)
         }}
@@ -410,7 +429,7 @@ export function Tasks() {
                   className={over === `list:${l.id}` ? 'over' : ''}
                   onDragOver={(e) => {
                     // A task held over another list will be sent there.
-                    if (!carried || l.id === list.id) return
+                    if (!carried || l.id === list.id || l.tasks.length >= MAX_TASKS) return
                     e.preventDefault()
                     setOver(`list:${l.id}`)
                   }}

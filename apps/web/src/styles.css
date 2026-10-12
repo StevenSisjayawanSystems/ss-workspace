@@ -4362,6 +4362,12 @@ button.task-tag:hover {
   background: rgba(216, 178, 94, 0.16);
 }
 
+.tasks-pop.tags button:disabled {
+  color: #7f8aa0;
+  background: none;
+  cursor: default;
+}
+
 .tasks-done-head {
   display: flex;
   justify-content: space-between;

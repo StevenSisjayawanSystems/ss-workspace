@@ -247,6 +247,11 @@ export const Icon = {
       <path d="M9 6h.010M15 6h.010M9 12h.010M15 12h.010M9 18h.010M15 18h.010" strokeWidth="2.6" />
     </Svg>
   ),
+  move: () => (
+    <Svg>
+      <path d="M4 12h11M11 8l4 4-4 4M20 5v14" />
+    </Svg>
+  ),
   target: () => (
     <Svg>
       <circle cx="12" cy="12" r="8" />
