@@ -1,5 +1,6 @@
-import { useRef, type ReactNode } from 'react'
+import { useMemo, useRef, type ReactNode } from 'react'
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
+import { Select } from '@react-three/postprocessing'
 import * as THREE from 'three'
 import { FURNITURE, type FurnitureType } from '@guildhouse/shared'
 import { useGame } from '../game'
@@ -41,6 +42,52 @@ const Stool = ({ p }: { p: V3 }) => (
     <C r={[0.1, 0.16]} h={0.34} p={[0, 0.17, 0]} c={PAL.woodDark} seg={8} />
   </group>
 )
+
+function SoftGlow({
+  p,
+  size = 0.9,
+  color = '#ffd98a',
+  opacity = 0.32,
+}: {
+  p: V3
+  size?: number
+  color?: string
+  opacity?: number
+}) {
+  const texture = useMemo(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 128
+    canvas.height = 128
+
+    const ctx = canvas.getContext('2d')!
+    const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64)
+
+    gradient.addColorStop(0, 'rgba(255,255,255,1)')
+    gradient.addColorStop(0.2, 'rgba(255,255,255,0.75)')
+    gradient.addColorStop(0.55, 'rgba(255,255,255,0.22)')
+    gradient.addColorStop(1, 'rgba(255,255,255,0)')
+
+    ctx.fillStyle = gradient
+    ctx.fillRect(0, 0, 128, 128)
+
+    return new THREE.CanvasTexture(canvas)
+  }, [])
+
+  return (
+    <sprite position={p} scale={[size, size, 1]}>
+      <spriteMaterial
+        map={texture}
+        color={color}
+        transparent
+        opacity={opacity}
+        blending={THREE.AdditiveBlending}
+        depthTest={false}
+        depthWrite={false}
+        toneMapped={false}
+      />
+    </sprite>
+  )
+}
 
 function Flicker({ children, speed = 9, amount = 0.12 }: { children: ReactNode; speed?: number; amount?: number }) {
   const ref = useRef<THREE.Group>(null!)
@@ -255,16 +302,19 @@ const PIECES: Record<FurnitureType, () => ReactNode> = {
       <C r={0.07} h={0.8} p={[0, 0.16, 0.36]} c={PAL.woodDark} rot={[0, 0, Math.PI / 2]} seg={8} />
       <group position={[0, 0.2, 0.36]}>
         <Flicker amount={0.2}>
-          <mesh position={[0, 0.2, 0]} material={glow('#ff8a3c', 2.2)}>
-            <coneGeometry args={[0.24, 0.5, 8]} />
-          </mesh>
-          <mesh position={[0.02, 0.14, 0.04]} material={glow('#ffe08a', 2.4)}>
-            <coneGeometry args={[0.13, 0.3, 8]} />
-          </mesh>
+          <Select enabled>
+            <mesh position={[0, 0.2, 0]} material={glow('#ff8a3c', 1.15)}>
+              <coneGeometry args={[0.24, 0.5, 8]} />
+            </mesh>
+          </Select>
+          <Select enabled>
+            <mesh position={[0.02, 0.14, 0.04]} material={glow('#ffe08a', 1.25)}>
+              <coneGeometry args={[0.13, 0.3, 8]} />
+            </mesh>
+          </Select>
         </Flicker>
       </group>
-      <pointLight position={[0, 0.7, 1]} color="#ffb066" intensity={5} distance={7} decay={1.6} />
-      <S r={0.1} p={[-0.7, 1.72, 0]} c={PAL.brass} />
+      <pointLight position={[0, 0.7, 1]} color="#ffb066" intensity={2.5} distance={5} decay={1.8} />      <S r={0.1} p={[-0.7, 1.72, 0]} c={PAL.brass} />
       <B s={[0.3, 0.24, 0.06]} p={[0.5, 1.75, 0]} c={PAL.parchment} />
     </>
   ),
@@ -320,9 +370,20 @@ const PIECES: Record<FurnitureType, () => ReactNode> = {
       <C r={[0.1, 0.18]} h={0.14} p={[0, 0.07, 0]} c={PAL.stoneDark} seg={8} />
       <C r={0.045} h={1.5} p={[0, 0.82, 0]} c={PAL.ink} seg={8} />
       <B s={[0.3, 0.05, 0.3]} p={[0, 1.58, 0]} c={PAL.ink} />
-      <mesh position={[0, 1.76, 0]} material={glow('#ffd98a', 1.7)}>
-        <boxGeometry args={[0.22, 0.3, 0.22]} />
-      </mesh>
+
+      <SoftGlow
+        p={[0, 1.76, 0]}
+        size={0.9}
+        color="#ffd98a"
+        opacity={0.15}
+      />
+
+      <Select enabled>
+        <mesh position={[0, 1.76, 0]} material={glow('#ffd98a', 0.9)}>
+          <boxGeometry args={[0.22, 0.3, 0.22]} />
+        </mesh>
+      </Select>
+
       <mesh position={[0, 2.0, 0]} material={toon(PAL.ink)} castShadow>
         <coneGeometry args={[0.24, 0.2, 4]} />
       </mesh>

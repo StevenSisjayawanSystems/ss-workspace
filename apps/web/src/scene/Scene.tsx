@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Sparkles } from '@react-three/drei'
-import { Bloom, EffectComposer, HueSaturation, Vignette } from '@react-three/postprocessing'
+import { EffectComposer, HueSaturation, Select, Selection, SelectiveBloom, Vignette } from '@react-three/postprocessing'
 import * as THREE from 'three'
 import { GRID_H, GRID_W, ROOMS, SPAWN } from '@guildhouse/shared'
 import { Building } from './Building'
@@ -51,7 +51,7 @@ function Daylight() {
     light.position.set(GRID_W / 2 + Math.sin(s.azimuth) * 24, s.height, GRID_H / 2 + Math.cos(s.azimuth) * 24)
     hemi.current.color.set(s.skyTint)
     hemi.current.groundColor.set(s.bounce)
-    hemi.current.intensity = s.ambient
+    hemi.current.intensity = s.ambient * 1.7
   })
   return (
     <>
@@ -75,7 +75,7 @@ function Lamplight() {
     <group ref={group}>
       {rooms.map((r) => {
         const span = Math.max(r.x1 - r.x0, r.z1 - r.z0) + 1
-        return <pointLight key={r.id} position={[(r.x0 + r.x1) / 2, 2.6, (r.z0 + r.z1) / 2]} color="#ffc98a" distance={span * 1.15} decay={1.3} userData={{ power: 5 + span * 0.7 }} />
+        return <pointLight key={r.id} position={[(r.x0 + r.x1) / 2, 2.6, (r.z0 + r.z1) / 2]} color="#ffad66" distance={span} decay={1.5} userData={{ power: 3.8 + span * 0.55 }} />
       })}
     </group>
   )
@@ -85,7 +85,7 @@ function Lamplight() {
 function Mood({ bloom, vignette }: { bloom: React.RefObject<any>; vignette: React.RefObject<any> }) {
   useFrame(() => {
     const n = sky.current.night
-    if (bloom.current) bloom.current.intensity = 0.45 + n * 0.75
+    if (bloom.current) bloom.current.intensity = 0.08 + n * 0.04
     if (vignette.current) vignette.current.darkness = 0.5 + n * 0.25
   })
   return null
@@ -124,47 +124,90 @@ export function Scene({ profile }: { profile: Profile | null }) {
       dpr={[1, 2]}
       camera={{ position: [SPAWN.x + 30, 30, SPAWN.z + 30], zoom: 60, near: 0.1, far: 200 }}
     >
-      <color attach="background" args={['#699f49']} />
-      <Daylight />
-      <Lamplight />
-      <Mood bloom={bloom} vignette={vignette} />
-      <Building />
-      <FurnitureLayer />
-      {BACKDROP.map(([x, z, s], i) => (
-        <group key={i} position={[x, 0, z]} scale={s}>
-          <Piece type="tree" />
-        </group>
-      ))}
-      {BUSHES.map(([x, z, s], i) => (
-        <group key={i} position={[x, 0, z]} scale={s}>
-          <Bush />
-        </group>
-      ))}
-      {ROCKS.map(([x, z, s], i) => (
-        <group key={i} position={[x, 0, z]} scale={s} rotation-y={i * 1.7}>
-          <Rock />
-        </group>
-      ))}
-      <Path />
-      <Grass />
-      <Wildflowers />
-      <CloudShadows />
-      {profile && <Player name={profile.name} look={profile.look} />}
-      <FocusGarden />
-      <Remotes />
-      {profile && <Seats />}
-      {profile && <Desks />}
-      {profile && <ScheduleSigns />}
-      <Sparkles position={[29, 1.3, 12]} scale={[9, 1.6, 23]} count={45} size={14} speed={0.35} color="#fff3a0" />
-      <Sparkles position={[12, 1.4, 12]} scale={[23, 1.8, 23]} count={70} size={6} speed={0.2} opacity={0.5} color="#fff8e0" />
-      <CameraRig tour={!profile} />
-      <EffectComposer multisampling={8} autoClear={false}>
-        <Ink />
-        <Bloom ref={bloom} mipmapBlur luminanceThreshold={1} luminanceSmoothing={0.2} intensity={0.45} />
-        <HueSaturation saturation={0.04} />
-        <Vignette ref={vignette} offset={0.22} darkness={0.55} />
-      </EffectComposer>
-      <LabelOverlayRenderer />
+      <Selection>
+        <color attach="background" args={['#699f49']} />
+        <Daylight />
+        <ambientLight color="#ffc98a" intensity={0.20} />
+        <Lamplight />
+        <Mood bloom={bloom} vignette={vignette} />
+        <Building />
+        <FurnitureLayer />
+        {BACKDROP.map(([x, z, s], i) => (
+          <group key={i} position={[x, 0, z]} scale={s}>
+            <Piece type="tree" />
+          </group>
+        ))}
+        {BUSHES.map(([x, z, s], i) => (
+          <group key={i} position={[x, 0, z]} scale={s}>
+            <Bush />
+          </group>
+        ))}
+        {ROCKS.map(([x, z, s], i) => (
+          <group key={i} position={[x, 0, z]} scale={s} rotation-y={i * 1.7}>
+            <Rock />
+          </group>
+        ))}
+        <Path />
+        <Grass />
+        <Wildflowers />
+        <CloudShadows />
+        {profile && <Player name={profile.name} look={profile.look} />}
+        <FocusGarden />
+        <Remotes />
+        {profile && <Seats />}
+        {profile && <Desks />}
+        {profile && <ScheduleSigns />}
+        <Select enabled>
+          <Sparkles
+            position={[GRID_W / 2, 1.3, GRID_H / 2]}
+            scale={[GRID_W, 1.6, GRID_H]}
+            count={110}
+            size={30}
+            speed={0.35}
+            opacity={0.55}
+            color="#fff3a0"
+          />
+
+          <Sparkles
+            position={[GRID_W / 2, 1.4, GRID_H / 2]}
+            scale={[GRID_W, 1.8, GRID_H]}
+            count={110}
+            size={15}
+            speed={0.2}
+            opacity={0.45}
+            color="#ffc7dd"
+          />
+
+          <Sparkles
+            position={[GRID_W / 2, 1.5, GRID_H / 2]}
+            scale={[GRID_W, 1.4, GRID_H]}
+            count={110}
+            size={20}
+            speed={0.16}
+            opacity={0.35}
+            color="#c8f7e8"
+          />
+        </Select>
+
+        <CameraRig tour={!profile} />
+        <EffectComposer multisampling={8}>
+          <Ink />
+
+          <SelectiveBloom
+            ref={bloom}
+            mipmapBlur
+            intensity={0.12}
+            luminanceThreshold={0}
+            luminanceSmoothing={0.1}
+            radius={0.25}
+          />
+
+          <HueSaturation saturation={0.04} />
+          <Vignette ref={vignette} offset={0.18} darkness={0.42} />
+        </EffectComposer>
+
+        <LabelOverlayRenderer />
+      </Selection>
     </Canvas>
   )
 }
