@@ -186,11 +186,12 @@ interface NetState {
   ids: string[]
   chat: ChatLine[]
   bubbles: Record<string, { text: string; until: number }>
+  emotes: Record<string, { id: number; emoji: string; until: number }[]>
 }
 
 const NO_MUSIC: JukeState = { queue: [], startedAt: 0, paused: false, pausedAt: 0 }
 
-export const useNet = create<NetState>(() => ({ me: '', account: false, seenAt: 0, since: 0, about: '', people: [], bonds: {}, talk: '', talks: [], unread: {}, loginNeeded: false, inviteNeeded: false, garden: [], desks: {}, bookings: [], closed: {}, knock: null, notes: [], statuses: {}, pomo: NO_TIMER, ringing: null, inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {} }))
+export const useNet = create<NetState>(() => ({ me: '', account: false, seenAt: 0, since: 0, about: '', people: [], bonds: {}, talk: '', talks: [], unread: {}, loginNeeded: false, inviteNeeded: false, garden: [], desks: {}, bookings: [], closed: {}, knock: null, notes: [], statuses: {}, pomo: NO_TIMER, ringing: null, inCall: false, call: [], taken: {}, ranks: {}, selfJoinedAt: 0, juke: NO_MUSIC, jukeError: null, status: 'offline', selfId: null, ids: [], chat: [], bubbles: {}, emotes: {} }))
 
 const SEND_MS = 80
 const MAX_CHAT = 400
@@ -218,6 +219,27 @@ function bubble(id: string, text: string, ms: number) {
       if (s.bubbles[id]?.until !== until) return s
       const { [id]: _, ...rest } = s.bubbles
       return { bubbles: rest }
+    })
+  }, ms)
+}
+
+let emoteId = 0
+
+function emote(id: string, emoji: string, ms = 1800) {
+  const item = { id: ++emoteId, emoji, until: Date.now() + ms }
+  useNet.setState((s) => ({
+    emotes: {
+      ...s.emotes,
+      [id]: [...(s.emotes[id] ?? []), item].slice(-6),
+    },
+  }))
+  setTimeout(() => {
+    useNet.setState((s) => {
+      const next = (s.emotes[id] ?? []).filter((entry) => entry.id !== item.id)
+      const emotes = { ...s.emotes }
+      if (next.length) emotes[id] = next
+      else delete emotes[id]
+      return { emotes }
     })
   }, ms)
 }
@@ -591,7 +613,10 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
       // Speech bubbles are for what is said out loud in the room.
       if (!m.to) bubble(m.id, m.text.length > 70 ? `${m.text.slice(0, 68)}…` : m.text, 5000)
     })
-    joined.onMessage('emote', (m: { id: string; emote: Emote }) => bubble(m.id, EMOTES[m.emote] ?? '', 2500))
+    joined.onMessage('emote', (m: { id: string; emote: Emote }) => {
+      const emoji = EMOTES[m.emote]
+      if (emoji) emote(m.id, emoji)
+    })
     joined.onLeave(() => disconnected(profile))
     joined.onError(() => {})
 

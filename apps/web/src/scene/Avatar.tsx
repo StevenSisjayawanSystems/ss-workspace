@@ -1,14 +1,93 @@
-import { useRef, type RefObject } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useMemo, useRef, type RefObject } from 'react'
+import { createPortal, useFrame } from '@react-three/fiber'
 import { Outlines } from '@react-three/drei'
 import * as THREE from 'three'
 import { DEFAULT_LOOK, type AvatarLook } from '../look'
-import { Label } from './Label'
+import { Label, labelOverlayScene } from './Label'
 import { PAL, toon } from './toon'
 
 const Line = () => <Outlines thickness={0.02} color={PAL.ink} />
 const TROUSERS = '#3d5f96'
 const BOOTS = '#7a4a2e'
+
+type EmoteItem = { id: number; emoji: string; until: number }
+
+function EmoteSprite({ item, y }: { item: EmoteItem; y: number }) {
+  const anchor = useRef<THREE.Group>(null!)
+  const sprite = useRef<THREE.Sprite>(null!)
+  const material = useRef<THREE.SpriteMaterial>(null!)
+  const screenRight = useMemo(() => new THREE.Vector3(), [])
+  const screenUp = useMemo(() => new THREE.Vector3(), [])
+  const [offsetX, offsetY] = useMemo(() => {
+    const angle = Math.random() * Math.PI * 2
+    const radius = 0.62 + Math.random() * 0.22
+    return [Math.cos(angle) * radius, Math.sin(angle) * radius * 0.72]
+  }, [item.id])
+  const texture = useMemo(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 192
+    canvas.height = 192
+    const ctx = canvas.getContext('2d')!
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.font = '128px "Apple Color Emoji", "Segoe UI Emoji", sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(item.emoji, 96, 100)
+    const map = new THREE.CanvasTexture(canvas)
+    map.colorSpace = THREE.SRGBColorSpace
+    map.anisotropy = 4
+    return map
+  }, [item.emoji])
+
+  useFrame(({ camera }) => {
+    if (!anchor.current || !sprite.current || !material.current) return
+    const duration = 1800
+    const startedAt = item.until - duration
+    const progress = THREE.MathUtils.clamp((Date.now() - startedAt) / duration, 0, 1)
+    const rise = offsetY + progress * 0.22
+
+    anchor.current.position.set(0, y, 0)
+    anchor.current.getWorldPosition(sprite.current.position)
+    screenRight.setFromMatrixColumn(camera.matrixWorld, 0).multiplyScalar(offsetX)
+    screenUp.setFromMatrixColumn(camera.matrixWorld, 1).multiplyScalar(rise)
+    sprite.current.position.add(screenRight).add(screenUp)
+
+    const pop = Math.min(1, progress / 0.12)
+    const fade = progress < 0.58 ? 1 : 1 - (progress - 0.58) / 0.42
+    const scale = 0.78 * (0.82 + pop * 0.18)
+    sprite.current.scale.set(scale, scale, 1)
+    material.current.opacity = THREE.MathUtils.clamp(fade, 0, 1)
+  })
+
+  return (
+    <>
+      <group ref={anchor} />
+      {createPortal(
+        <sprite ref={sprite} renderOrder={12}>
+          <spriteMaterial
+            ref={material}
+            map={texture}
+            transparent
+            depthTest={false}
+            depthWrite={false}
+            toneMapped={false}
+          />
+        </sprite>,
+        labelOverlayScene,
+      )}
+    </>
+  )
+}
+
+function EmoteBurst({ emotes, y }: { emotes: EmoteItem[]; y: number }) {
+  return (
+    <>
+      {emotes.map((item) => (
+        <EmoteSprite key={item.id} item={item} y={y} />
+      ))}
+    </>
+  )
+}
 
 // Spiky anime hair: a cap plus tufts swept back and a fringe over the brow.
 const TUFTS: [number, number, number, number, number, number][] = [
@@ -18,7 +97,7 @@ const TUFTS: [number, number, number, number, number, number][] = [
 ]
 
 // A young storybook adventurer built from primitives. Faces +z; the parent group places and turns it.
-export function Avatar({ look = DEFAULT_LOOK, name, moving, seated, bubble, status }: { look?: AvatarLook; name?: string; status?: string; moving: RefObject<boolean>; seated?: RefObject<boolean>; bubble?: string }) {
+export function Avatar({ look = DEFAULT_LOOK, name, moving, seated, bubble, status, emotes = [] }: { look?: AvatarLook; name?: string; status?: string; moving: RefObject<boolean>; seated?: RefObject<boolean>; bubble?: string; emotes?: EmoteItem[] }) {
   const body = useRef<THREE.Group>(null!)
   const legL = useRef<THREE.Group>(null!)
   const legR = useRef<THREE.Group>(null!)
@@ -96,6 +175,7 @@ export function Avatar({ look = DEFAULT_LOOK, name, moving, seated, bubble, stat
         {/* short cape pinned at the collar */}
         <mesh position={[0, 0.71, 0]} material={toon(look.trim)}>
           <cylinderGeometry args={[0.09, 0.15, 0.07, 14]} />
+          <Line />
         </mesh>
         <group ref={cape} position={[0, 0.72, -0.1]}>
           <mesh position={[0, -0.2, -0.02]} material={toon(look.trim)} castShadow>
@@ -162,8 +242,9 @@ export function Avatar({ look = DEFAULT_LOOK, name, moving, seated, bubble, stat
         </group>
       </group>
       </group>
-      {name && <Label text={status ? `${name} · ${status}` : name} y={look.hat ? 1.66 : 1.4} />}
-      {bubble && <Label text={bubble} y={look.hat ? 2.08 : 1.82} bubble />}
+      {name && <Label text={status ? `${name} · ${status}` : name} y={-0.18} placement="below" />}
+      {bubble && <Label text={bubble} y={look.hat ? 1.75 : 1.49} bubble />}
+      {!!emotes.length && <EmoteBurst emotes={emotes} y={look.hat ? 1.02 : 0.92} />}
     </group>
   )
 }
