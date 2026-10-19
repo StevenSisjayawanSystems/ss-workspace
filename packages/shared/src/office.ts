@@ -209,14 +209,12 @@ export const FURNITURE: Furniture[] = [
   { type: 'tree', x: 26, z: 2 },
   { type: 'tree', x: 32, z: 3 },
   { type: 'tree', x: 33, z: 9 },
-  { type: 'tree', x: 32, z: 14 },
   { type: 'picnic', x: 29.5, z: 12.5 },
   { type: 'lantern', x: 25, z: 10 },
   { type: 'lantern', x: 25, z: 13 },
 
   // Focus garden: the beds themselves are drawn from who has grown what
-  { type: 'bench', x: 10, z: 30, rot: 2 },
-  { type: 'bench', x: 14, z: 30, rot: 2 },
+  { type: 'bench', x: 12, z: 30, rot: 2 },
   { type: 'lantern', x: 3, z: 25 },
   { type: 'lantern', x: 21, z: 25 },
 
@@ -224,7 +222,6 @@ export const FURNITURE: Furniture[] = [
   { type: 'meditationCircle', x: 29, z: 20 },
   { type: 'tree', x: 26, z: 17 },
   { type: 'tree', x: 33, z: 16 },
-  { type: 'tree', x: 25, z: 20 },
   { type: 'lantern', x: 27, z: 16 },
   { type: 'lantern', x: 31, z: 16 },
   { type: 'flowers', x: 26, z: 5 },
