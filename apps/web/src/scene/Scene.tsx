@@ -161,7 +161,7 @@ export function Scene({ profile }: { profile: Profile | null }) {
           <Sparkles
             position={[GRID_W / 2, 1.3, GRID_H / 2]}
             scale={[GRID_W, 1.6, GRID_H]}
-            count={90}
+            count={70}
             size={30}
             speed={0.35}
             opacity={0.55}
@@ -171,7 +171,7 @@ export function Scene({ profile }: { profile: Profile | null }) {
           <Sparkles
             position={[GRID_W / 2, 1.4, GRID_H / 2]}
             scale={[GRID_W, 1.8, GRID_H]}
-            count={90}
+            count={70}
             size={15}
             speed={0.2}
             opacity={0.45}
@@ -181,7 +181,7 @@ export function Scene({ profile }: { profile: Profile | null }) {
           <Sparkles
             position={[GRID_W / 2, 1.5, GRID_H / 2]}
             scale={[GRID_W, 1.4, GRID_H]}
-            count={90}
+            count={70}
             size={20}
             speed={0.16}
             opacity={0.35}
