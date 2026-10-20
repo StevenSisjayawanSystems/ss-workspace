@@ -117,16 +117,81 @@ export function Grass({ count = 24000 }: { count?: number }) {
 // It starts at the front door (the building's south wall is at z = 24) and runs through the focus garden.
 const PATH_Z0 = 24.7
 const PATH_Z1 = 30.6
-const pathX = (z: number) => 12 + Math.sin((z - PATH_Z0) * 0.38) * 1.3
+const pathX = (_z: number) => 12
 const onPath = (x: number, z: number, half: number) => z > PATH_Z0 && z < PATH_Z1 && Math.abs(x - pathX(z)) < half
 
 export function Path() {
   const stones = useMemo(() => {
     const r = rng(5)
     const out: { x: number; z: number; rx: number; rz: number; rot: number; tone: number }[] = []
-    for (let z = PATH_Z0 + 0.5; z < PATH_Z1; z += 0.62) {
-      const side = out.length % 2 ? 0.32 : -0.32
-      out.push({ x: pathX(z) + side + (r() - 0.5) * 0.2, z, rx: 0.3 + r() * 0.14, rz: 0.24 + r() * 0.1, rot: r() * 3, tone: r() })
+    const MIN_GAP = 0.14
+    for (let z = PATH_Z0 + 0.5; z < PATH_Z1 - 1.0; z += 0.68) {
+      const rx = 0.27 + r() * 0.16
+      const rz = 0.22 + r() * 0.13
+      const zAdjustment = out.length === 4 ? -0.18 : 0
+      let bestX = pathX(z)
+      let bestZ = z - 0.2 + zAdjustment
+      let bestClearance = -Infinity
+
+      for (let attempt = 0; attempt < 40; attempt++) {
+        const x = pathX(z) + (r() - 0.5) * 0.9
+        const candidateZ = z - 0.2 + zAdjustment + (r() - 0.5) * 0.18
+        const clearance = out.reduce((smallest, stone) => {
+          const dx = x - stone.x
+          const dz = candidateZ - stone.z
+          const requiredX = rx + stone.rx + MIN_GAP
+          const requiredZ = rz + stone.rz + MIN_GAP
+          const separation = Math.hypot(dx / requiredX, dz / requiredZ)
+          return Math.min(smallest, separation)
+        }, Infinity)
+
+        if (clearance > bestClearance) {
+          bestClearance = clearance
+          bestX = x
+          bestZ = candidateZ
+        }
+        if (clearance >= 1.08) break
+      }
+
+      // Preserve the best candidate, then reduce size only when a full-size stone cannot fit.
+      // This prevents the fallback from leaving two large stones almost touching.
+      let fittedRx = rx
+      let fittedRz = rz
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const tooClose = out.some((stone) => {
+          const dx = bestX - stone.x
+          const dz = bestZ - stone.z
+          return Math.hypot(
+            dx / (fittedRx + stone.rx + MIN_GAP),
+            dz / (fittedRz + stone.rz + MIN_GAP),
+          ) < 1
+        })
+        if (!tooClose) break
+        fittedRx *= 0.94
+        fittedRz *= 0.94
+      }
+
+      out.push({ x: bestX, z: bestZ, rx: fittedRx, rz: fittedRz, rot: r() * 3, tone: r() })
+    }
+    // Apply size-only adjustments after all positions are calculated so they cannot move neighboring stones.
+    const thirdFromBench = out[out.length - 3]
+    if (thirdFromBench) {
+      thirdFromBench.rx *= 1.06
+      thirdFromBench.rz *= 1.06
+    }
+    const fifthFromBench = out[out.length - 5]
+    if (fifthFromBench) {
+      fifthFromBench.rx *= 0.97
+      fifthFromBench.rz *= 0.97
+    }
+    const fourthFromBench = out[out.length - 4]
+    if (fourthFromBench) {
+      fourthFromBench.z += 0.68 * 0.2
+    }
+    const seventhFromBench = out[out.length - 7]
+    if (seventhFromBench) {
+      seventhFromBench.rx *= 0.95 * 0.95 * 0.95
+      seventhFromBench.rz *= 0.95 * 0.95 * 0.95
     }
     return out
   }, [])
