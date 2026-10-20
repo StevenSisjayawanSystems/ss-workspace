@@ -113,7 +113,7 @@ const BOOKS = [PAL.red, PAL.teal, PAL.blue, PAL.brass, PAL.purple, PAL.green]
 const BookRow = ({ y, w, d, seed }: { y: number; w: number; d: number; seed: number }) => (
   <>
     {[0, 1, 2, 3, 4].map((i) => (
-      <B key={i} s={[w / 5 - 0.03, 0.3 - ((i + seed) % 3) * 0.04, d]} p={[-w / 2 + (i + 0.5) * (w / 5), y + 0.15 - ((i + seed) % 3) * 0.02, 0.04]} c={BOOKS[(i * 2 + seed) % BOOKS.length]} />
+      <B key={i} s={[w / 5 - 0.03, 0.3 - ((i + seed) % 3) * 0.04, d]} p={[-w / 2 + (i + 0.5) * (w / 5), y + 0.15 - ((i + seed) % 3) * 0.02, 0.0]} c={BOOKS[(i * 2 + seed) % BOOKS.length]} />
     ))}
   </>
 )
@@ -144,12 +144,23 @@ const PIECES: Record<FurnitureType, () => ReactNode> = {
   ),
   bookshelf: () => (
     <>
-      <B s={[1.92, 1.8, 0.5]} p={[0, 0.9, -0.1]} c={PAL.woodDark} />
-      <B s={[2, 0.1, 0.6]} p={[0, 1.84, -0.1]} c={PAL.wood} />
+      <B s={[0.08, 1.78, 0.5]} p={[-0.92, 0.89, -0.12]} c={PAL.wood} />
+      <B s={[0.08, 1.78, 0.5]} p={[0.92, 0.89, -0.12]} c={PAL.wood} />
+      <B s={[1.92, 0.08, 0.52]} p={[0, 1.8, -0.12]} c={PAL.wood} />
+      <B s={[1.92, 0.08, 0.52]} p={[0, 0.04, -0.12]} c={PAL.wood} />
       {[0.14, 0.7, 1.26].map((y, i) => (
-        <group key={y} position={[0, 0, 0.12]}>
-          <B s={[1.76, 0.44, 0.1]} p={[0, y + 0.22, -0.02]} c={PAL.ink} />
-          <BookRow y={y} w={1.7} d={0.14} seed={i} />
+        <group key={y} position={[0, 0, 0.08]}>
+          <mesh
+            position={[0, y + 0.22, -0.12]}
+            material={toon(PAL.woodDark)}
+            receiveShadow
+          >
+            <boxGeometry args={[1.76, 0.44, 0.018]} />
+          </mesh>
+          <B s={[1.76, 0.055, 0.26]} p={[0, y - 0.028, -0.08]} c={PAL.wood} />
+          <group position={[0, 0, -0.035]}>
+            <BookRow y={y} w={1.7} d={0.06} seed={i} />
+          </group>
         </group>
       ))}
     </>

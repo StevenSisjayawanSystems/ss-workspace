@@ -29,6 +29,7 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
   const status = useGame((s) => s.status)
   const streak = useStats((s) => s.progress.streak)
   const bubble = useNet((s) => (s.selfId ? s.bubbles[s.selfId]?.text : undefined))
+  const emotes = useNet((s) => (s.selfId ? s.emotes[s.selfId] : undefined))
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -164,11 +165,12 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
         <ringGeometry args={[0.22, 0.3, 24]} />
       </mesh>
       <group ref={group}>
-        <Avatar name={name} status={status} streak={streak} look={look} moving={moving} seated={seated} bubble={bubble} />
+        <Avatar name={name} status={status} streak={streak} look={look} moving={moving} seated={seated} bubble={bubble} emotes={emotes ?? []} />
         <mesh position={[0, 0.7, 0]} visible={false} onPointerOver={overSelf} onPointerOut={outSelf} onClick={clickSelf}>
           <cylinderGeometry args={[0.34, 0.34, 1.4, 10]} />
         </mesh>
-        {hover && !bubble && <Label text="Your profile" y={look.hat ? 2.35 : 2.09} />}›      </group>
+        {hover && !bubble && <Label text="Your profile" y={look.hat ? 2.35 : 2.09} />}
+      </group>
     </>
   )
 }
