@@ -29,7 +29,7 @@ export interface Room {
 }
 
 export const GRID_W = 35
-export const GRID_H = 32
+export const GRID_H = 33
 
 export const ROOMS: Room[] = [
   { id: 'library', name: 'Library Nooks', blurb: 'Quiet focus', x0: 1, z0: 1, x1: 7, z1: 6, floor: 'carpet' },
@@ -42,7 +42,7 @@ export const ROOMS: Room[] = [
   { id: 'garden', name: 'Garden Terrace', blurb: 'Fresh air', x0: 25, z0: 1, x1: 33, z1: 14, floor: 'grass', outdoor: true },
   { id: 'meditation', name: 'Meditation Grove', blurb: 'Breathe', x0: 25, z0: 16, x1: 33, z1: 23, floor: 'grass', outdoor: true },
   // Out of the front door: a bed for each person, planted by their focus sessions.
-  { id: 'focusGarden', name: 'Focus Garden', blurb: 'Grown from focus', x0: 3, z0: 25, x1: 21, z1: 30, floor: 'grass', outdoor: true },
+  { id: 'focusGarden', name: 'Focus Garden', blurb: 'Grown from focus', x0: 3, z0: 25, x1: 21, z1: 31, floor: 'grass', outdoor: true },
 ]
 
 export const DOORS: { x: number; z: number }[] = [
