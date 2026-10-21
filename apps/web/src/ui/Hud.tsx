@@ -11,6 +11,7 @@ import { Alarm, Pomodoro } from './Pomodoro'
 import { Profile } from './Profile'
 import { Ring } from './Ring'
 import { Roster } from './Roster'
+import { MeetMenu, SeatPrompt } from './SeatPrompt'
 
 function MiniMap() {
   const dot = useRef<SVGCircleElement>(null)
@@ -87,9 +88,15 @@ function NotesPill() {
   const count = useNet((s) => s.notes.length)
   const left = useNet((s) => s.tasks.lists.reduce((n, l) => n + l.tasks.filter((t) => !t.done).length, 0))
   const online = useNet((s) => s.status === 'online')
+  const [meet, setMeet] = useState(false)
   if (!online) return null
   return (
     <div className="side-pills">
+      <button className="notes-pill" title="Join a meeting or any room's call" onClick={() => setMeet(!meet)}>
+        <Icon.phone />
+        <span>Meetings</span>
+      </button>
+      {meet && <MeetMenu onClose={() => setMeet(false)} />}
       <button className="notes-pill" title="Open the bulletin board" onClick={() => useGame.setState({ boardOpen: true })}>
         <Icon.pin />
         <span>Board</span>
@@ -151,8 +158,9 @@ export function Hud() {
       <Knock />
       <Profile />
       <NotesPill />
+      <SeatPrompt />
       <MiniMap />
-      <div className="hint">{touch ? 'Tap to walk · pinch to zoom' : 'Click to walk · WASD to move · scroll to zoom'}</div>
+      <div className="hint">{touch ? 'Tap to walk · pinch to zoom' : 'Click to walk · WASD to move · E to sit · scroll to zoom'}</div>
     </div>
   )
 }
