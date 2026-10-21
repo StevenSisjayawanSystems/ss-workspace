@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Client, type Room } from '@colyseus/sdk'
-import { DESKS, SEATS, SPAWN, circleFree } from '@guildhouse/shared'
+import { DESKS, SEATS, SPAWN, circleFree, seatById } from '@guildhouse/shared'
 import { createServer } from './app'
 import { cleanBlock, cleanColor, cleanText, validMove } from './rules'
 
@@ -243,6 +243,22 @@ describe('office room', () => {
     b.send('stand')
     await wait(1300)
     expect(b.state.doors.length).toBe(0)
+
+    // The backup way in: 'join' seats you in a room from anywhere, never in a quiet room or a taken seat.
+    a.send('join', 'councilB')
+    await wait(200)
+    expect(seatById(players(b)[a.sessionId].seat)?.zone).toBe('councilB')
+    b.send('join', players(b)[a.sessionId].seat)
+    await wait(200)
+    expect(seatById(players(a)[b.sessionId].seat)?.zone).toBe('councilB')
+    expect(players(a)[b.sessionId].seat).not.toBe(players(a)[a.sessionId].seat)
+    b.send('stand')
+    await wait(200)
+    b.send('join', 'library')
+    await wait(200)
+    expect(players(a)[b.sessionId].seat).toBe('')
+    a.send('stand')
+    await wait(200)
 
     a.send('desk:release')
     a.send('room:cancel', b.state.bookings[0].id)

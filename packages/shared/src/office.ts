@@ -132,8 +132,9 @@ export interface Furniture {
   rot?: 0 | 1 | 2 | 3
 }
 
+// Desks keep clear of the door columns (x = 4, 12, 20) so every doorway opens onto a free aisle.
 const deskRow = (z: number, rot: 0 | 2, chairZ: number): Furniture[] =>
-  [4.5, 9.5, 14.5, 19.5].flatMap((x) => [
+  [2.5, 7.5, 16.5, 21.5].flatMap((x) => [
     { type: 'desk' as const, x, z, rot },
     { type: 'chair' as const, x, z: chairZ, rot: rot === 0 ? (2 as const) : (0 as const) },
   ])
@@ -147,10 +148,11 @@ export const FURNITURE: Furniture[] = [
   { type: 'plant', x: 23, z: 8 },
   { type: 'plant', x: 1, z: 15 },
   { type: 'plant', x: 23, z: 15 },
-  { type: 'lantern', x: 8, z: 8 },
-  { type: 'lantern', x: 16, z: 8 },
-  { type: 'lantern', x: 8, z: 15 },
-  { type: 'lantern', x: 16, z: 15 },
+  // Lamps fill the dead-end corners between the end desks and the potted plants, out of every walkway.
+  { type: 'lantern', x: 1, z: 9 },
+  { type: 'lantern', x: 1, z: 14 },
+  { type: 'lantern', x: 23, z: 9 },
+  { type: 'lantern', x: 23, z: 14 },
 
   // Library nooks
   { type: 'bookshelf', x: 1.5, z: 1 },
@@ -210,7 +212,7 @@ export const FURNITURE: Furniture[] = [
   { type: 'tree', x: 26, z: 2 },
   { type: 'tree', x: 32, z: 3 },
   { type: 'tree', x: 33, z: 9 },
-  { type: 'picnic', x: 29.5, z: 12.5 },
+  { type: 'picnic', x: 31.5, z: 12.5 },
   { type: 'lantern', x: 25, z: 10 },
   { type: 'lantern', x: 25, z: 13 },
 
