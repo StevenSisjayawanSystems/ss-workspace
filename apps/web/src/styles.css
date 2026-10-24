@@ -336,7 +336,7 @@ input {
   margin-bottom: 16px;
 }
 
-.field > span {
+.field>span {
   display: block;
   margin-bottom: 7px;
   font: 600 11px var(--display);
@@ -367,7 +367,7 @@ input {
   gap: 8px;
 }
 
-.field.check > span {
+.field.check>span {
   margin: 0;
   color: var(--cream);
 }
@@ -539,7 +539,7 @@ input {
   font-weight: 800;
 }
 
-.juke-queue li > span {
+.juke-queue li>span {
   display: inline-block;
   max-width: calc(100% - 30px);
   overflow: hidden;
@@ -973,7 +973,7 @@ button.status:hover {
   color: var(--gold);
 }
 
-.roster-list + .roster-head {
+.roster-list+.roster-head {
   margin-top: 16px;
 }
 
@@ -1395,9 +1395,23 @@ button.status:hover {
 }
 
 @keyframes ring-shake {
-  0%, 18%, 100% { transform: rotate(0); }
-  3%, 9%, 15% { transform: rotate(-14deg); }
-  6%, 12% { transform: rotate(14deg); }
+
+  0%,
+  18%,
+  100% {
+    transform: rotate(0);
+  }
+
+  3%,
+  9%,
+  15% {
+    transform: rotate(-14deg);
+  }
+
+  6%,
+  12% {
+    transform: rotate(14deg);
+  }
 }
 
 .ring-text {
@@ -1589,7 +1603,7 @@ body:has(.call.focus) .hud {
   z-index: 31;
 }
 
-body:has(.call.focus) .hud > :not(.pomo-pill):not(.pomo):not(.ring):not(.toast) {
+body:has(.call.focus) .hud> :not(.pomo-pill):not(.pomo):not(.ring):not(.toast) {
   display: none;
 }
 
@@ -1660,6 +1674,42 @@ body:has(.call.focus) .jukebox:not(.open) .juke-video {
 
   .call.focus .call-stage {
     margin-top: 76px;
+  }
+}
+
+
+/* Responsive lower HUD: avoid collisions with chat, task tracker and hints. */
+.minimap {
+  width: clamp(110px, 15vw, 210px);
+}
+
+/* The centered movement instructions compete with the chat and map in narrower windows. */
+@media (max-width: 1100px) {
+  .hint {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .minimap {
+    right: max(12px, env(safe-area-inset-right));
+    bottom: calc(max(12px, env(safe-area-inset-bottom)) + 83px);
+    width: clamp(110px, 20vw, 140px);
+  }
+}
+
+/* With the task tracker or tall chat expanded, preserve the text instead of overlapping it with the map. */
+@media (max-width: 900px) {
+  body:has(.chat:not(.docked) .quests-body) .minimap,
+  body:has(.chat.tall:not(.docked)) .minimap {
+    display: none;
+  }
+}
+
+/* On phone-size screens the always-visible chat leaves no reliable non-overlapping map area. */
+@media (max-width: 520px) {
+  body:has(.chat:not(.docked)) .minimap {
+    display: none;
   }
 }
 
@@ -1780,7 +1830,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
   cursor: pointer;
 }
 
-.pomo-pill:not(.idle) ~ .side-pills {
+.pomo-pill:not(.idle)~.side-pills {
   left: calc(max(14px, env(safe-area-inset-left)) + 150px);
 }
 
@@ -1887,8 +1937,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
   height: 100%;
   min-height: 380px;
   overflow: hidden;
-  background: #c9a070
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='72'%3E%3Cg fill='%23b98d5c'%3E%3Crect x='8' y='11' width='3' height='2'/%3E%3Crect x='41' y='6' width='2' height='3'/%3E%3Crect x='60' y='30' width='3' height='2'/%3E%3Crect x='24' y='44' width='2' height='2'/%3E%3Crect x='50' y='58' width='3' height='2'/%3E%3Crect x='6' y='62' width='2' height='3'/%3E%3C/g%3E%3Cg fill='%23d8b486'%3E%3Crect x='28' y='20' width='3' height='2'/%3E%3Crect x='63' y='9' width='2' height='2'/%3E%3Crect x='12' y='36' width='2' height='3'/%3E%3Crect x='44' y='38' width='3' height='2'/%3E%3Crect x='33' y='64' width='2' height='2'/%3E%3C/g%3E%3C/svg%3E");
+  background: #c9a070 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='72'%3E%3Cg fill='%23b98d5c'%3E%3Crect x='8' y='11' width='3' height='2'/%3E%3Crect x='41' y='6' width='2' height='3'/%3E%3Crect x='60' y='30' width='3' height='2'/%3E%3Crect x='24' y='44' width='2' height='2'/%3E%3Crect x='50' y='58' width='3' height='2'/%3E%3Crect x='6' y='62' width='2' height='3'/%3E%3C/g%3E%3Cg fill='%23d8b486'%3E%3Crect x='28' y='20' width='3' height='2'/%3E%3Crect x='63' y='9' width='2' height='2'/%3E%3Crect x='12' y='36' width='2' height='3'/%3E%3Crect x='44' y='38' width='3' height='2'/%3E%3Crect x='33' y='64' width='2' height='2'/%3E%3C/g%3E%3C/svg%3E");
 }
 
 .board-lanes {
@@ -1899,7 +1948,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
 }
 
 /* Lanes are marked off with string, and each hangs a plaque like the room banners. */
-.board-lanes > div {
+.board-lanes>div {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -1909,23 +1958,23 @@ body:has(.meditation:not([hidden])) .call.quiet {
   --lane: var(--gold);
 }
 
-.board-lanes > div:first-child {
+.board-lanes>div:first-child {
   border-left: 0;
 }
 
-.board-lanes > .doing {
+.board-lanes>.doing {
   --lane: #6fb8ad;
 }
 
-.board-lanes > .done {
+.board-lanes>.done {
   --lane: #93c46f;
 }
 
-.board-lanes > .remove {
+.board-lanes>.remove {
   --lane: #e07a5f;
 }
 
-.board-lanes > div.on {
+.board-lanes>div.on {
   background: rgba(243, 234, 214, 0.2);
 }
 
@@ -1986,7 +2035,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
   transform: rotate(-2deg);
 }
 
-.board-lanes > div:nth-child(even) em {
+.board-lanes>div:nth-child(even) em {
   transform: rotate(1.5deg);
 }
 
@@ -2065,14 +2114,17 @@ body:has(.meditation:not([hidden])) .call.quiet {
     transform: translate(calc(-50% + var(--fx)), calc(-50% + var(--fy))) rotate(-9deg) scale(1.3);
     box-shadow: 16px 20px 0 rgba(36, 24, 10, 0.2);
   }
+
   62% {
     transform: translate(-50%, -50%) rotate(var(--tilt)) scale(1.1);
     box-shadow: 9px 11px 0 rgba(36, 24, 10, 0.24);
   }
+
   80% {
     transform: translate(-50%, -50%) rotate(var(--tilt)) scale(0.95);
     box-shadow: 0 0 0 rgba(36, 24, 10, 0.32);
   }
+
   100% {
     transform: translate(-50%, -50%) rotate(var(--tilt)) scale(1);
     box-shadow: 2px 3px 0 rgba(36, 24, 10, 0.32);
@@ -2080,11 +2132,13 @@ body:has(.meditation:not([hidden])) .call.quiet {
 }
 
 @keyframes tape {
+
   0%,
   74% {
     opacity: 0;
     transform: rotate(-2deg) scale(1.5);
   }
+
   100% {
     opacity: 1;
     transform: rotate(-2deg) scale(1);
@@ -2092,6 +2146,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .sticky.fresh,
   .sticky.fresh::before {
     animation: none;
@@ -2108,7 +2163,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
   cursor: pointer;
 }
 
-.sticky > .rich {
+.sticky>.rich {
   flex: 1;
   max-height: 230px;
   margin-bottom: 8px;
@@ -2209,7 +2264,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
   transform: rotate(2deg);
 }
 
-.board-pad > span {
+.board-pad>span {
   position: absolute;
   right: 10px;
   bottom: 5px;
@@ -2227,7 +2282,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
   padding-bottom: 2px;
 }
 
-.board-opt > span {
+.board-opt>span {
   display: block;
   margin-bottom: 7px;
   font: 600 10.5px var(--display);
@@ -2493,7 +2548,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
   padding: 3px 7px;
 }
 
-.chat-tabs button:not(.chat-tool) + .chat-tool {
+.chat-tabs button:not(.chat-tool)+.chat-tool {
   margin-left: auto;
 }
 
@@ -2669,7 +2724,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
   box-shadow: var(--edge);
 }
 
-.profile > .icon-btn {
+.profile>.icon-btn {
   position: absolute;
   top: 12px;
   right: 12px;
@@ -2847,7 +2902,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
   padding-right: 28px;
 }
 
-.profile-edit-look > div {
+.profile-edit-look>div {
   flex: 1;
   min-width: 0;
 }
@@ -3023,7 +3078,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
 }
 
 .profile-friend button,
-.profile-bonds li > button {
+.profile-bonds li>button {
   flex: none;
   padding: 5px 12px;
   font: 700 12px var(--ui);
@@ -3035,7 +3090,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
 }
 
 .profile-friend button.on,
-.profile-bonds li > button.on {
+.profile-bonds li>button.on {
   color: var(--teal-ink);
   background: var(--gold);
   border-color: var(--gold);
@@ -3062,7 +3117,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
   border-bottom: 1px solid rgba(216, 178, 94, 0.12);
 }
 
-.profile-bonds li > i {
+.profile-bonds li>i {
   flex: none;
   width: 8px;
   height: 8px;
@@ -3070,11 +3125,11 @@ body:has(.meditation:not([hidden])) .call.quiet {
   border-radius: 50%;
 }
 
-.profile-bonds li > i.here {
+.profile-bonds li>i.here {
   background: #86c98a;
 }
 
-.profile-bonds li > div {
+.profile-bonds li>div {
   flex: 1;
   min-width: 0;
 }
@@ -3169,14 +3224,14 @@ body:has(.meditation:not([hidden])) .call.quiet {
   gap: 6px;
 }
 
-.rich-item > em {
+.rich-item>em {
   flex: none;
   min-width: 9px;
   font-style: normal;
   font-weight: 700;
 }
 
-.rich-item > div {
+.rich-item>div {
   min-width: 0;
 }
 
@@ -3316,7 +3371,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
   height: 15px;
 }
 
-.note-face > .rich {
+.note-face>.rich {
   font-size: 15px;
   line-height: 1.45;
   -webkit-user-select: text;
@@ -3339,14 +3394,14 @@ body:has(.meditation:not([hidden])) .call.quiet {
   margin-top: 12px;
 }
 
-.note-edit > span {
+.note-edit>span {
   margin-left: auto;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: rgba(28, 26, 23, 0.6);
 }
 
-.note-edit > button {
+.note-edit>button {
   padding: 6px 13px;
   font: 700 12px var(--ui);
   color: #1c1a17;
@@ -3356,18 +3411,18 @@ body:has(.meditation:not([hidden])) .call.quiet {
   cursor: pointer;
 }
 
-.note-edit > button.on {
+.note-edit>button.on {
   color: #fff;
   background: #1c1a17;
 }
 
-.note-edit > button:disabled {
+.note-edit>button:disabled {
   opacity: 0.4;
   cursor: default;
 }
 
 .note-edit .over,
-.board-pad > span.over {
+.board-pad>span.over {
   font-weight: 800;
   color: #8f1d12;
 }
@@ -3381,11 +3436,11 @@ body:has(.meditation:not([hidden])) .call.quiet {
   list-style: none;
 }
 
-.note-thread li + li {
+.note-thread li+li {
   margin-top: 10px;
 }
 
-.note-thread li > div {
+.note-thread li>div {
   display: flex;
   align-items: baseline;
   gap: 8px;
@@ -3514,7 +3569,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
   gap: 10px;
 }
 
-.pomo-alarm-set > div {
+.pomo-alarm-set>div {
   flex: 1;
   min-width: 0;
 }
@@ -3551,7 +3606,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
   margin-top: 10px;
 }
 
-.juke-picks > span {
+.juke-picks>span {
   display: block;
   margin-bottom: 6px;
   font: 600 10px var(--display);
@@ -3576,7 +3631,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
   cursor: pointer;
 }
 
-.juke-picks button + button {
+.juke-picks button+button {
   margin-top: 6px;
 }
 
@@ -3677,7 +3732,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
   list-style: none;
 }
 
-.tasks-rail li > button {
+.tasks-rail li>button {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -3694,18 +3749,18 @@ body:has(.meditation:not([hidden])) .call.quiet {
   transition: background 0.12s, color 0.12s;
 }
 
-.tasks-rail li > button:hover {
+.tasks-rail li>button:hover {
   color: var(--cream);
   background: rgba(243, 234, 214, 0.06);
 }
 
-.tasks-rail li > button.on {
+.tasks-rail li>button.on {
   color: var(--cream);
   background: rgba(216, 178, 94, 0.14);
   border-left-color: var(--gold);
 }
 
-.tasks-rail li > button span {
+.tasks-rail li>button span {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -3713,14 +3768,14 @@ body:has(.meditation:not([hidden])) .call.quiet {
   white-space: nowrap;
 }
 
-.tasks-rail li > button svg {
+.tasks-rail li>button svg {
   flex: none;
   width: 13px;
   height: 13px;
   color: var(--gold);
 }
 
-.tasks-rail li > button em {
+.tasks-rail li>button em {
   flex: none;
   min-width: 18px;
   padding: 0 5px;
@@ -3882,7 +3937,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
   cursor: text;
 }
 
-.tasks-head > .task-edit {
+.tasks-head>.task-edit {
   font: 700 16px var(--display);
 }
 
@@ -4068,7 +4123,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
   color: #9aa6ba;
 }
 
-.tasks-group-head > i {
+.tasks-group-head>i {
   font-style: normal;
   color: #7f8aa0;
 }
@@ -4275,6 +4330,7 @@ button.task-tag:hover {
 }
 
 @media (hover: none) {
+
   .task-grip,
   .task .task-tool,
   .task-tag.none,
@@ -4331,7 +4387,7 @@ button.task-tag:hover {
   color: #7f8aa0;
 }
 
-.tasks-pop.share > button {
+.tasks-pop.share>button {
   width: 100%;
   padding: 7px;
   font: 700 12px var(--ui);
@@ -4394,7 +4450,7 @@ button.task-tag:hover {
   text-decoration: underline;
 }
 
-.profile-list + .profile-list {
+.profile-list+.profile-list {
   margin-top: 18px;
 }
 
@@ -4491,7 +4547,7 @@ button.task-tag:hover {
   border-bottom: 1px solid rgba(216, 178, 94, 0.12);
 }
 
-.task-sessions li > div {
+.task-sessions li>div {
   display: flex;
   align-items: baseline;
   gap: 10px;
@@ -4703,13 +4759,15 @@ body:has(.pomo) .quests-body,
   display: none;
 }
 
-@media (max-height: 560px), (pointer: coarse) {
+@media (max-height: 560px),
+(pointer: coarse) {
   .quests ul {
     max-height: 92px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .tasks,
   .tasks-scrim,
   .tasks-main,
@@ -4759,7 +4817,7 @@ body:has(.pomo) .quests-body,
   overflow-wrap: anywhere;
 }
 
-.confirm > div {
+.confirm>div {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
@@ -4880,7 +4938,7 @@ body:has(.pomo) .chat-people {
   outline: none;
 }
 
-.status-custom + .roster-head {
+.status-custom+.roster-head {
   margin-top: 16px;
 }
 
@@ -5132,7 +5190,7 @@ button.task-star:active {
 }
 
 /* A task held over another list will be sent there. */
-.tasks-rail li.over > button {
+.tasks-rail li.over>button {
   background: rgba(216, 178, 94, 0.16);
 }
 
@@ -5383,7 +5441,7 @@ button.task-star:active {
   cursor: default;
 }
 
-.pomo-focus li + li {
+.pomo-focus li+li {
   border-top: 1px solid rgba(216, 178, 94, 0.12);
 }
 
@@ -5399,4 +5457,149 @@ button.task-star:active {
 
 .pomo-alarm form input::placeholder {
   color: #7f8aa0;
+}
+
+/* Responsive top HUD: preserve desktop, rearrange before panels collide. */
+@media (max-width: 1100px) {
+  .banner {
+    top: max(12px, env(safe-area-inset-top));
+    max-width: calc(100vw - 32px);
+    min-width: 0;
+    padding: 8px clamp(14px, 2.5vw, 28px);
+  }
+
+  .banner-name {
+    font-size: clamp(12px, 1.6vw, 17px);
+    letter-spacing: 0.08em;
+    white-space: normal;
+  }
+
+  .status {
+    top: calc(max(12px, env(safe-area-inset-top)) + 74px);
+    left: max(12px, env(safe-area-inset-left));
+    max-width: calc(100vw - 24px);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .clock {
+    top: calc(max(12px, env(safe-area-inset-top)) + 110px);
+    left: max(12px, env(safe-area-inset-left));
+  }
+
+  .jukebox,
+  .jukebox:not(.open) {
+    top: calc(max(12px, env(safe-area-inset-top)) + 110px);
+    right: max(12px, env(safe-area-inset-right));
+    width: clamp(160px, 23vw, 250px);
+    max-width: calc(100vw - 220px);
+  }
+
+  .jukebox:not(.open) .juke-video {
+    display: none;
+  }
+
+  .pomo-pill {
+    top: calc(max(12px, env(safe-area-inset-top)) + 190px);
+    left: max(12px, env(safe-area-inset-left));
+  }
+
+  .side-pills,
+  .pomo-pill:not(.idle) ~ .side-pills {
+    top: calc(max(12px, env(safe-area-inset-top)) + 190px);
+    left: max(158px, calc(env(safe-area-inset-left) + 158px));
+    gap: clamp(5px, 0.8vw, 8px);
+  }
+
+  .pomo,
+  .roster {
+    top: calc(max(12px, env(safe-area-inset-top)) + 228px);
+  }
+
+  .jukebox.open {
+    width: min(300px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+    max-height: min(60dvh, 480px);
+  }
+}
+
+@media (max-width: 600px) {
+  .banner-name {
+    font-size: clamp(12px, 3.5vw, 15px);
+  }
+
+  .clock {
+    font-size: 12px;
+    padding: 4px 9px;
+  }
+
+  .jukebox,
+  .jukebox:not(.open) {
+    width: clamp(120px, 34vw, 150px);
+    max-width: calc(100vw - 185px);
+    padding: 6px;
+  }
+
+  .jukebox .juke-title,
+  .jukebox .juke-sub {
+    font-size: 11px;
+  }
+
+  .pomo-pill {
+    padding: 4px 9px;
+    font-size: 12px;
+  }
+
+  .side-pills,
+  .pomo-pill:not(.idle) ~ .side-pills {
+    left: 102px;
+    gap: 5px;
+  }
+
+  .notes-pill {
+    padding: 4px 7px;
+    font-size: 12px;
+    gap: 4px;
+  }
+
+  .jukebox.open {
+    width: min(300px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+  }
+}
+
+/* Keep focus-call controls in their existing dedicated positions. */
+@media (min-width: 721px) and (max-width: 1100px) {
+  body:has(.call.focus) .pomo-pill {
+    top: max(22px, env(safe-area-inset-top));
+    left: 50%;
+  }
+
+  body:has(.call.focus) .pomo {
+    top: calc(max(22px, env(safe-area-inset-top)) + 38px);
+    left: 50%;
+  }
+
+  body:has(.call.focus) .jukebox {
+    top: max(14px, env(safe-area-inset-top));
+    right: 24px;
+  }
+}
+
+@media (max-width: 720px) {
+  body:has(.call.focus) .pomo-pill {
+    top: calc(max(22px, env(safe-area-inset-top)) + 56px);
+    left: max(14px, env(safe-area-inset-left));
+  }
+
+  body:has(.call.focus) .pomo {
+    top: calc(max(22px, env(safe-area-inset-top)) + 94px);
+    left: max(14px, env(safe-area-inset-left));
+  }
+
+  body:has(.call.focus) .jukebox {
+    top: max(14px, env(safe-area-inset-top));
+    right: 12px;
+  }
 }
