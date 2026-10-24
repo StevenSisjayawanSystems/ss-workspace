@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
-import { GRID_H, GRID_W, WALK_SPEED, moveCircle, route, seatById, zoneAt, type Point } from '@guildhouse/shared'
+import { GRID_H, GRID_W, WALK_SPEED, circleFree, route, seatById, zoneAt, type Point } from '@guildhouse/shared'
 import { inReach, input, player, useGame } from '../game'
 import type { AvatarLook } from '../look'
-import { joinNow, requestSit, sitNearby, standUp, useNet } from '../net/net'
+import { requestSit, standUp, useNet } from '../net/net'
 import { useStats } from '../stats'
 import { Avatar } from './Avatar'
 import { Label } from './Label'
@@ -23,8 +23,6 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
   const moving = useRef(false)
   const seated = useRef(false)
   const path = useRef<Point[]>([])
-  // The seat the current route was planned for, so arrival is only judged once there is a route to judge.
-  const plannedSeat = useRef<string | null>(null)
   const held = useRef(new Set<string>())
   const walkTarget = useGame((s) => s.walkTarget)
   const snaps = useGame((s) => s.snaps)
@@ -36,13 +34,7 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || (e.target instanceof HTMLElement && e.target.isContentEditable)
-      if (typing) return
-      if (e.code in KEYS) held.current.add(e.code)
-      // E sits down (see sitNearby) or gets up again.
-      if (e.code === 'KeyE' && !e.repeat) {
-        if (useGame.getState().seat) standUp()
-        else sitNearby()
-      }
+      if (e.code in KEYS && !typing) held.current.add(e.code)
     }
     const up = (e: KeyboardEvent) => held.current.delete(e.code)
     const clear = () => held.current.clear()
@@ -62,9 +54,6 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
     standUp()
     const r = route(player, walkTarget)
     if (r?.length) path.current = r
-    plannedSeat.current = useGame.getState().pendingSeat
-    // No way to walk there: take the seat directly instead of leaving the click unanswered.
-    if (!r && plannedSeat.current) joinNow(plannedSeat.current)
   }, [walkTarget])
 
   useEffect(() => {
@@ -98,9 +87,10 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
       const k = Math.min(1, len) / len
       const wx = ((sx - sy) * k) / Math.SQRT2
       const wz = ((-sx - sy) * k) / Math.SQRT2
-      const next = moveCircle(player.x, player.z, wx * WALK_SPEED * dt, wz * WALK_SPEED * dt)
-      dx = next.x - player.x
-      dz = next.z - player.z
+      const nx = player.x + wx * WALK_SPEED * dt
+      const nz = player.z + wz * WALK_SPEED * dt
+      if (circleFree(nx, player.z)) dx = nx - player.x
+      if (circleFree(player.x + dx, nz)) dz = nz - player.z
     } else if (path.current.length) {
       const next = path.current[0]
       const tx = next.x - player.x
@@ -124,12 +114,10 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
       const diff = Math.atan2(Math.sin(want - player.facing), Math.cos(want - player.facing))
       player.facing += diff * Math.min(1, dt * 14)
     }
-    // Arrived beside the seat we were heading for: sit down. If the route ended short of it, take it directly.
-    if (game.pendingSeat && plannedSeat.current === game.pendingSeat && !path.current.length && !moving.current) {
-      const id = game.pendingSeat
+    // Arrived beside the seat we were heading for: sit down.
+    if (game.pendingSeat && !path.current.length && !moving.current && inReach(game.pendingSeat)) {
+      requestSit(game.pendingSeat)
       useGame.setState({ pendingSeat: null })
-      if (inReach(id)) requestSit(id)
-      else joinNow(id)
     }
     // Cushions sit on the ground, so the sitter eases down further than on a chair.
     const drop = seatById(useGame.getState().seat ?? '')?.drop ?? 0

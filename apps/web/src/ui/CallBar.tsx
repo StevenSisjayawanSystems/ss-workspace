@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react'
-import { BOOKABLE_ZONES, QUIET_ZONES, deskOfSeat, roomById, seatById } from '@guildhouse/shared'
+import { BOOKABLE_ZONES, QUIET_ZONES, roomById, seatById } from '@guildhouse/shared'
 import { useGame } from '../game'
-import { desks, remotes, rooms, standUp, useNet } from '../net/net'
+import { remotes, rooms, standUp, useNet } from '../net/net'
 import { canShareScreen, levels, startVoice, toggleBlur, toggleCam, toggleMic, toggleScreen, useVoice } from '../voice/voice'
 import { Chat } from './Chat'
 import { Icon } from './icons'
@@ -67,23 +67,6 @@ const Btn = ({ label, on, danger, onClick, children }: { label: string; on?: boo
     {children}
   </button>
 )
-
-// Seated at a workroom desk: make it yours, or give it back.
-function DeskBtn({ seatId }: { seatId: string }) {
-  const desk = deskOfSeat(seatId)
-  const owner = useNet((s) => (desk ? s.desks[desk.id] : undefined))
-  const me = useGame((s) => s.profile?.name)
-  if (!desk || (owner && owner !== me)) return null
-  return owner ? (
-    <Btn label="Give up this desk" on onClick={() => desks.release()}>
-      <Icon.pin />
-    </Btn>
-  ) : (
-    <Btn label="Make this my desk" onClick={() => desks.claim(desk.id)}>
-      <Icon.pin />
-    </Btn>
-  )
-}
 
 // The voice channel for the room you are seated in. Focus mode fills the screen with the call and the chat.
 export function CallBar() {
@@ -157,7 +140,6 @@ export function CallBar() {
         <Btn label={focus ? 'Back to the office' : 'Focus on the call'} on={focus} onClick={() => useVoice.setState({ focus: !focus })}>
           {focus ? <Icon.shrink /> : <Icon.expand />}
         </Btn>
-        <DeskBtn seatId={seat.id} />
         <Btn label="Leave call" danger onClick={standUp}>
           <Icon.leave />
         </Btn>

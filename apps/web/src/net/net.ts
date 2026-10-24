@@ -1,6 +1,6 @@
 import { Client, type Room } from '@colyseus/sdk'
 import { create } from 'zustand'
-import { BOOKABLE_ZONES, QUIET_ZONES, SEATS, SIT_REACH, deskOfSeat, isBoard, roomById, seatById, standSpot, type BoardId, type BondWith, type Person, type Progress, type Seat, type TaskCategory, type TaskList, type TaskSession, type ZoneId } from '@guildhouse/shared'
+import { QUIET_ZONES, SEATS, isBoard, roomById, seatById, standSpot, type BoardId, type BondWith, type Person, type Progress, type Seat, type TaskCategory, type TaskList, type TaskSession, type ZoneId } from '@guildhouse/shared'
 import { accessToken } from '../account'
 import { inReach, player, saveStatus, useGame, walkToSeat, type Profile } from '../game'
 import { DEFAULT_LOOK, type AvatarLook } from '../look'
@@ -756,48 +756,12 @@ function freeSeat(zone?: ZoneId): Seat | undefined {
   return best
 }
 
-// Walks over and sits down in a room's call. If the walk cannot be made, Player falls back to joinNow.
+// Walks over and sits down in a room's call.
 export function joinCallIn(zone: ZoneId) {
   if (seatById(useGame.getState().seat ?? '')?.zone === zone) return
   const seat = freeSeat(zone)
   if (seat) requestSit(seat.id)
   else announce(roomById(zone).name, 'has no free seats')
-}
-
-// The backup way in: takes a seat (or the nearest free one in a room) straight away, without walking.
-export function joinNow(target: string) {
-  if (!room) return announce('Offline', 'Calls need a connection')
-  const current = seatById(useGame.getState().seat ?? '')
-  if (current && (current.id === target || current.zone === target)) return
-  useGame.setState({ pendingSeat: null })
-  room.send('join', target)
-}
-
-// What E does while standing: sit in the free seat beside us, or, inside a meeting room, take any free seat in it.
-export function sitNearby() {
-  const seat = seatInReach()
-  const zone = useGame.getState().zone
-  if (seat) requestSit(seat.id)
-  else if (BOOKABLE_ZONES.includes(zone)) joinCallIn(zone)
-}
-
-// The free seat closest to us that we could sit in right now, if any is within reach.
-export function seatInReach(): Seat | undefined {
-  const { taken, desks } = useNet.getState()
-  const me = useGame.getState().profile?.name
-  let best: Seat | undefined
-  let bestD = SIT_REACH
-  for (const s of SEATS) {
-    if (taken[s.id]) continue
-    const desk = deskOfSeat(s.id)
-    if (desk && desks[desk.id] && desks[desk.id] !== me) continue
-    const d = Math.hypot(s.x - player.x, s.z - player.z)
-    if (d <= bestD) {
-      bestD = d
-      best = s
-    }
-  }
-  return best
 }
 
 const RING_SECONDS = 30
@@ -1016,7 +980,7 @@ export const jukebox = {
   duration: (id: string, duration: number) => room?.send('juke:duration', { id, duration }),
 }
 
-if (import.meta.env.DEV) Object.assign((window as any).__game, { net: { useNet, remotes, jukebox, sendChat, sendEmote, requestSit, standUp, joinNow, connect, ringPerson, answerRing, pomodoro, board, setStatus, desks, rooms, answerKnock, openTalk } })
+if (import.meta.env.DEV) Object.assign((window as any).__game, { net: { useNet, remotes, jukebox, sendChat, sendEmote, requestSit, standUp, connect, ringPerson, answerRing, pomodoro, board, setStatus, desks, rooms, answerKnock, openTalk } })
 
 // This module owns a live connection, so a hot update cannot be applied in place.
 import.meta.hot?.dispose(() => {

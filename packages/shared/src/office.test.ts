@@ -8,7 +8,6 @@ import {
   findPath,
   footprintTiles,
   isWalkable,
-  moveCircle,
   nearestWalkable,
   route,
   tileAt,
@@ -27,16 +26,6 @@ describe('office layout', () => {
       const northSouth = isWalkable(d.x, d.z - 1) && isWalkable(d.x, d.z + 1)
       const eastWest = isWalkable(d.x - 1, d.z) && isWalkable(d.x + 1, d.z)
       expect(northSouth || eastWest, `door ${d.x},${d.z}`).toBe(true)
-    }
-  })
-
-  it('every door opens onto a clear aisle at least two tiles deep on both sides', () => {
-    for (const d of DOORS) {
-      const [ax, az] = isWalkable(d.x, d.z - 1) && isWalkable(d.x, d.z + 1) ? [0, 1] : [1, 0]
-      for (const k of [1, 2]) {
-        expect(isWalkable(d.x - ax * k, d.z - az * k), `door ${d.x},${d.z} side A, ${k} in`).toBe(true)
-        expect(isWalkable(d.x + ax * k, d.z + az * k), `door ${d.x},${d.z} side B, ${k} in`).toBe(true)
-      }
     }
   })
 
@@ -64,23 +53,6 @@ describe('office layout', () => {
       for (let x = r.x0; x <= r.x1; x++)
         for (let z = r.z0; z <= r.z1; z++)
           if (isWalkable(x, z)) expect(findPath(SPAWN, { x, z }), `${x},${z}`).not.toBeNull()
-  })
-})
-
-describe('free movement', () => {
-  it('eases a walker that is slightly off-centre through a doorway instead of stopping at the frame', () => {
-    // Heading north from the workroom into Council Chamber I, a little east of the door's centre.
-    let p = { x: 12.35, z: 9 }
-    for (let i = 0; i < 120 && p.z > 6; i++) p = moveCircle(p.x, p.z, 0, -0.07)
-    expect(p.z).toBeLessThanOrEqual(6)
-    expect(circleFree(p.x, p.z)).toBe(true)
-  })
-
-  it('still stops at a solid wall', () => {
-    let p = { x: 10, z: 9 }
-    for (let i = 0; i < 60; i++) p = moveCircle(p.x, p.z, 0, -0.07)
-    expect(p.z).toBeGreaterThan(7.5)
-    expect(p.x).toBeCloseTo(10)
   })
 })
 

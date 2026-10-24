@@ -18,23 +18,6 @@ export function circleFree(x: number, z: number, r = PLAYER_RADIUS): boolean {
   )
 }
 
-// One step of free movement. Blocked axes slide along walls, and when the way ahead is only blocked by
-// the edge of a gap (a doorway, an aisle between desks), the walker is eased sideways into it rather than stuck.
-export function moveCircle(x: number, z: number, dx: number, dz: number, r = PLAYER_RADIUS): Point {
-  if (circleFree(x + dx, z + dz, r)) return { x: x + dx, z: z + dz }
-  let nx = circleFree(x + dx, z, r) ? x + dx : x
-  let nz = circleFree(nx, z + dz, r) ? z + dz : z
-  const step = Math.hypot(dx, dz)
-  if (dz && nz === z) {
-    const cx = Math.round(x)
-    if (isWalkable(cx, Math.round(z + dz + Math.sign(dz) * r)) && circleFree(cx, z, r)) nx = x + Math.sign(cx - x) * Math.min(step, Math.abs(cx - x))
-  } else if (dx && nx === x) {
-    const cz = Math.round(z)
-    if (isWalkable(Math.round(x + dx + Math.sign(dx) * r), cz) && circleFree(x, cz, r)) nz = z + Math.sign(cz - z) * Math.min(step, Math.abs(cz - z))
-  }
-  return circleFree(nx, nz, r) ? { x: nx, z: nz } : { x, z }
-}
-
 export function lineClear(a: Point, b: Point, r = PLAYER_RADIUS): boolean {
   const dist = Math.hypot(b.x - a.x, b.z - a.z)
   const steps = Math.max(1, Math.ceil(dist / 0.2))

@@ -51,8 +51,8 @@ function SeatSpot({ seat, show }: { seat: Seat; show: boolean }) {
 
   return (
     <group position={[seat.x, 0, seat.z]}>
-      <mesh position={[0, 0.65, 0]} visible={false} onPointerOver={over} onPointerOut={out} onClick={click}>
-        <cylinderGeometry args={[0.5, 0.5, 1.3, 12]} />
+      <mesh position={[0, 0.5, 0]} visible={false} onPointerOver={over} onPointerOut={out} onClick={click}>
+        <cylinderGeometry args={[0.36, 0.36, 1, 10]} />
       </mesh>
       <mesh ref={ring} position={[0, 0.045, 0]} rotation-x={-Math.PI / 2} material={material} visible={free && (show || hovered)} renderOrder={3}>
         <ringGeometry args={[0.3, 0.37, 28]} />
