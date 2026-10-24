@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { ThreeEvent } from '@react-three/fiber'
 import { BOOKABLE_ZONES, DESKS, DOORS, roomById, zoneAt, type Desk, type ZoneId } from '@guildhouse/shared'
 import { useGame } from '../game'
-import { requestSit, serverNow, useNet } from '../net/net'
+import { desks, serverNow, useNet } from '../net/net'
 import { clockTime } from '../ui/Schedule'
 import { Label } from './Label'
 import { PAL, glow, toon } from './toon'
@@ -11,8 +11,7 @@ const point = (on: boolean) => {
   document.body.style.cursor = on ? 'pointer' : ''
 }
 
-// A workroom desk: clicking it sits you in its chair (claiming and giving up happen from the seat prompt).
-// A claimed desk shows whose it is.
+// A workroom desk: click to make it yours, click again to give it up. A claimed desk shows whose it is.
 function DeskSpot({ desk }: { desk: Desk }) {
   const owner = useNet((s) => s.desks[desk.id])
   const me = useGame((s) => s.profile?.name)
@@ -31,9 +30,10 @@ function DeskSpot({ desk }: { desk: Desk }) {
   const click = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation()
     if (e.delta > 8) return
-    if (!owner || mine) requestSit(desk.seatId)
+    if (mine) desks.release()
+    else if (!owner) desks.claim(desk.id)
   }
-  const text = hover ? (mine ? 'Your desk · click to sit' : owner ? `${owner}'s desk` : 'Free desk · click to sit') : owner ? (mine ? 'Your desk' : `${owner}'s desk`) : null
+  const text = hover ? (mine ? 'Your desk · click to give it up' : owner ? `${owner}'s desk` : 'Claim this desk') : owner ? (mine ? 'Your desk' : `${owner}'s desk`) : null
 
   return (
     <group position={[desk.x, 0, desk.z]}>

@@ -3,8 +3,8 @@ import { BOOKABLE_ZONES, DESKS, ROOMS, SEATS, deskById, deskOfSeat, seatById } f
 
 describe('desks', () => {
   it('lists every workroom desk with its own chair right beside it', () => {
-    expect(DESKS).toHaveLength(8)
-    expect(new Set(DESKS.map((d) => d.seatId)).size).toBe(8)
+    expect(DESKS).toHaveLength(10)
+    expect(new Set(DESKS.map((d) => d.seatId)).size).toBe(10)
     for (const d of DESKS) {
       const seat = seatById(d.seatId)!
       expect(seat.zone).toBe('workroom')

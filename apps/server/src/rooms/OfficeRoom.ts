@@ -1,6 +1,6 @@
 import { Room, ServerError, type Client } from 'colyseus'
 import { schema, t, type SchemaType } from '@colyseus/schema'
-import { BEDS, TASK_BONUS_PER_DAY, TASK_BONUS_SECONDS, MAX_COMMENTS, MAX_COMMENT_LENGTH, MAX_NOTES, MAX_NOTE_LENGTH, NEW_BOND, NOTE_COLORS, QUIET_ZONES, ROOMS, SEATS, SIT_REACH, SPAWN, isBoard, mentionsIn, nearestWalkable, onBoard, pairKey, parseYouTubeId, roomById, seatById, standSpot, zoneAt, type Bond, type Person, type ZoneId } from '@guildhouse/shared'
+import { BEDS, TASK_BONUS_PER_DAY, TASK_BONUS_SECONDS, MAX_COMMENTS, MAX_COMMENT_LENGTH, MAX_NOTES, MAX_NOTE_LENGTH, NEW_BOND, NOTE_COLORS, QUIET_ZONES, ROOMS, SIT_REACH, SPAWN, isBoard, mentionsIn, nearestWalkable, onBoard, pairKey, parseYouTubeId, seatById, standSpot, zoneAt, type Bond, type Person, type ZoneId } from '@guildhouse/shared'
 import { config, inviteAccepted } from '../config'
 import { db, type ChatLine } from '../db'
 import { Note, NoteStore, fromNote, toComment, toNote } from '../notes'
@@ -166,28 +166,12 @@ export class OfficeRoom extends Room {
       const refused = res.seatRefusal(this.state, seat.id, seat.zone, p.name, insideAlready)
       if (refused === res.KNOCK) return this.knock(client, p.name, seat.zone)
       if (refused) return client.send('notice', { title: refused, detail: 'Pick another seat' })
-      this.seatIn(client.sessionId, seat.id)
-    })
-
-    // The way in that never depends on walking: takes the given seat, or the nearest free one in the given
-    // room, from wherever you are. Bookings, claimed desks and closed doors still apply.
-    this.onMessage('join', (client: Client, target: unknown) => {
-      const p = this.state.players.get(client.sessionId)
-      if (!p || typeof target !== 'string') return
-      const wanted = seatById(target)
-      const zone = wanted?.zone ?? (ROOMS.some((r) => r.id === target) ? target : null)
-      if (!zone || QUIET_ZONES.includes(zone as ZoneId)) return
-      const taken = new Set<string>()
-      this.state.players.forEach((other, sid) => sid !== client.sessionId && other.seat && taken.add(other.seat))
-      const insideAlready = !!p.seat && p.zone === zone
-      const open = SEATS.filter((s) => s.zone === zone && !taken.has(s.id))
-        .map((s) => ({ s, refused: res.seatRefusal(this.state, s.id, s.zone, p.name, insideAlready) }))
-        .filter((o) => !o.refused || o.refused === res.KNOCK)
-        .sort((a, b) => (a.s.id === target ? -1 : b.s.id === target ? 1 : Math.hypot(a.s.x - p.x, a.s.z - p.z) - Math.hypot(b.s.x - p.x, b.s.z - p.z)))
-      const pick = open[0]
-      if (!pick) return client.send('notice', { title: `${roomById(zone as ZoneId).name} is full`, detail: 'No free seats right now' })
-      if (pick.refused === res.KNOCK) return this.knock(client, p.name, zone)
-      this.seatIn(client.sessionId, pick.s.id)
+      p.seat = seat.id
+      p.x = seat.x
+      p.z = seat.z
+      p.facing = seat.facing
+      p.moving = false
+      p.zone = seat.zone
     })
 
     this.onMessage('stand', (client: Client) => {
@@ -818,18 +802,6 @@ export class OfficeRoom extends Room {
     const changed = [...this.bondsChanged].filter((pair) => pair.split(' ').every((key) => this.people.has(key))).map((pair): [string, Bond] => [pair, this.bonds.get(pair)!])
     this.bondsChanged.clear()
     if (changed.length) this.writes = this.writes.then(() => db!.saveBonds(changed)).catch(warn)
-  }
-
-  private seatIn(sessionId: string, seatId: string) {
-    const p = this.state.players.get(sessionId)
-    const seat = seatById(seatId)
-    if (!p || !seat) return
-    p.seat = seat.id
-    p.x = seat.x
-    p.z = seat.z
-    p.facing = seat.facing
-    p.moving = false
-    p.zone = seat.zone
   }
 
   // The door is closed: the knock goes to everyone seated inside.
