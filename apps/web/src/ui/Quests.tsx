@@ -26,6 +26,11 @@ export function Quests() {
   const focused = new Set(focusTasks(lists, focus).map((t) => t.id))
   const finished = list.tasks.filter((t) => t.done).length
   const full = () => useGame.setState({ tasksOpen: true })
+  const toggleFold = () => {
+    const nextFolded = !folded
+    if (!nextFolded) useGame.setState({ pomoOpen: false, rosterOpen: false })
+    useTaskView.setState({ folded: nextFolded })
+  }
   const add = (e: FormEvent) => {
     e.preventDefault()
     if (draft.trim()) todo.add(list.id, draft.trim())
@@ -52,7 +57,7 @@ export function Quests() {
         <em>
           {finished}/{list.tasks.length}
         </em>
-        <button className="quests-fold" aria-label={folded ? 'Show tasks' : 'Hide tasks'} title={folded ? 'Show tasks' : 'Hide tasks'} aria-expanded={!folded} onClick={() => useTaskView.setState({ folded: !folded })}>
+        <button className="quests-fold" aria-label={folded ? 'Show tasks' : 'Hide tasks'} title={folded ? 'Show tasks' : 'Hide tasks'} aria-expanded={!folded} onClick={toggleFold}>
           {folded ? '▸' : '▾'}
         </button>
       </header>

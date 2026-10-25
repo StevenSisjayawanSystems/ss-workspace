@@ -4,6 +4,7 @@ import { player, useGame } from '../game'
 import { remotes, useNet } from '../net/net'
 import { clockText, localHour, skyAt } from '../time'
 import { useStats } from '../stats'
+import { useTaskView } from '../tasksView'
 import { Invites } from './Company'
 import { Icon } from './icons'
 import { Knock } from './Knock'
@@ -85,7 +86,6 @@ function Clock() {
 
 function NotesPill() {
   const count = useNet((s) => s.notes.length)
-  const left = useNet((s) => s.tasks.lists.reduce((n, l) => n + l.tasks.filter((t) => !t.done).length, 0))
   const online = useNet((s) => s.status === 'online')
   if (!online) return null
   return (
@@ -94,11 +94,6 @@ function NotesPill() {
         <Icon.pin />
         <span>Board</span>
         {count > 0 && <i>{count}</i>}
-      </button>
-      <button className="notes-pill" title="Your to-do list" onClick={() => useGame.setState({ tasksOpen: true })}>
-        <Icon.tasks />
-        <span>Tasks</span>
-        {left > 0 && <i>{left}</i>}
       </button>
     </div>
   )
@@ -109,10 +104,12 @@ export function Hud() {
   const room = roomById(zone)
   const status = useNet((s) => s.status)
   const count = useNet((s) => s.ids.length)
+  const roster = useGame((s) => s.rosterOpen)
+  const setRoster = useGame((s) => s.setRosterOpen)
   const touch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
-  const [roster, setRoster] = useState(false)
   const toast = useStats((s) => s.toast)
   const closedBy = useNet((s) => s.closed[zone])
+
   return (
     <div className="hud">
       {BOOKABLE_ZONES.includes(zone) ? (
@@ -130,11 +127,18 @@ export function Hud() {
           <div className="banner-blurb">{room.blurb}</div>
         </div>
       )}
-      <button className={`status ${status}`} title="Who is here, and your progress" onClick={() => setRoster(!roster)}>
+      <button
+        className={`status ${status}`}
+        title="Who is here, and your progress"
+        onClick={() => {
+          const nextRoster = !roster
+          if (nextRoster) useTaskView.setState({ folded: true })
+          setRoster(nextRoster)
+        }}
+      >
         {status === 'online' ? `${count + 1} in the guildhouse` : status === 'connecting' ? 'Connecting…' : 'Offline, exploring solo'}
       </button>
-      {roster && <Roster onClose={() => setRoster(false)} />}
-      {toast && (
+      {roster && <Roster onClose={() => setRoster(false)} />}      {toast && (
         <div className="toast" key={toast.title}>
           <Icon.cheer />
           <div>

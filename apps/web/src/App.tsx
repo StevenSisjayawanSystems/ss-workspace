@@ -2,14 +2,12 @@ import { useGame } from './game'
 import { Jukebox } from './music/Jukebox'
 import { Meditation } from './music/Meditation'
 import { Scene } from './scene/Scene'
-import { Board } from './ui/Board'
 import { CallBar } from './ui/CallBar'
 import { Chat } from './ui/Chat'
 import { Hud } from './ui/Hud'
 import { Join } from './ui/Join'
-import { Schedule } from './ui/Schedule'
-import { Tasks } from './ui/Tasks'
 import { Joystick } from './ui/Joystick'
+import { ModalLayer } from './ui/ModalLayer'
 
 export function App() {
   const profile = useGame((s) => s.profile)
@@ -26,9 +24,7 @@ export function App() {
           <Jukebox />
           <Meditation />
           <CallBar />
-          <Board />
-          <Schedule />
-          <Tasks />
+          <ModalLayer />
           {touch && <Joystick />}
         </>
       ) : (

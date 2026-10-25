@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { byUrgency } from '@guildhouse/shared'
+import { useGame } from '../game'
 import { alarm, pomodoro, serverNow, stopAlarm, todo, useNet, type PomoState } from '../net/net'
 import { focusTasks, toggleFocus, useTaskView } from '../tasksView'
 import { Company } from './Company'
@@ -260,7 +261,9 @@ export function Pomodoro() {
   const pomo = useNet((s) => s.pomo)
   const alarmAt = useNet((s) => s.alarm.at)
   const online = useNet((s) => s.status === 'online')
-  const [open, setOpen] = useState(false)
+  const open = useGame((s) => s.pomoOpen)
+  const setOpen = useGame((s) => s.setPomoOpen)
+  const tasksFolded = useTaskView((s) => s.folded)
   const lists = useNet((s) => s.tasks.lists)
   const focusing = focusTasks(lists, useTaskView((s) => s.focus))
   const running = pomo.phase !== 'idle'
@@ -270,6 +273,11 @@ export function Pomodoro() {
 
   const left = timeLeft(pomo)
   const label = phaseName(pomo)
+  const toggleOpen = () => {
+    const nextOpen = !open
+    if (nextOpen && !tasksFolded) useTaskView.setState({ folded: true })
+    setOpen(nextOpen)
+  }
 
   // The countdown rides in the tab title, so it is visible while you work in another window.
   useEffect(() => {
@@ -282,7 +290,13 @@ export function Pomodoro() {
   if (!online) return null
   return (
     <>
-      <button className={`pomo-pill ${pomo.phase} ${pomo.paused ? 'paused' : ''}`} title={focusing.length ? `Timer · focusing on ${focusing.map((t) => t.title).join(', ')}` : 'Timer'} onClick={() => setOpen(!open)}>
+      <button
+        className={`pomo-pill ${pomo.phase} ${pomo.paused ? 'paused' : ''}`}
+        aria-expanded={open}
+        aria-controls="pomodoro-panel"
+        title={focusing.length ? `Timer · focusing on ${focusing.map((t) => t.title).join(', ')}` : 'Timer'}
+        onClick={toggleOpen}
+      >
         <Icon.timer />
         {running ? (
           <>
@@ -299,7 +313,16 @@ export function Pomodoro() {
         )}
       </button>
       {open && (
-        <div className="pomo">
+        <div className="pomo" id="pomodoro-panel">
+          <button
+            className="icon-btn pomo-close"
+            aria-label="Close timer"
+            title="Close timer"
+            onClick={() => setOpen(false)}
+          >
+            <Icon.close />
+          </button>
+
           {running ? (
             <>
               <div className="pomo-phase">
