@@ -1,6 +1,6 @@
-import { useMemo, useRef, type RefObject } from 'react'
+import { Suspense, useMemo, useRef, type RefObject } from 'react'
 import { createPortal, useFrame } from '@react-three/fiber'
-import { Outlines } from '@react-three/drei'
+import { Outlines, useTexture } from '@react-three/drei'
 import * as THREE from 'three'
 import { DEFAULT_LOOK, type AvatarLook } from '../look'
 import { Label, labelOverlayScene } from './Label'
@@ -12,7 +12,26 @@ const BOOTS = '#7a4a2e'
 
 type EmoteItem = { id: number; emoji: string; until: number }
 
-function EmoteSprite({ item, y }: { item: EmoteItem; y: number }) {
+const EMOTE_IMAGES: Record<string, string> = {
+  wave: '/emotes/wave.png',
+  heart: '/emotes/heart.png',
+  laugh: '/emotes/laugh.png',
+  cheer: '/emotes/cheer.png',
+}
+
+Object.values(EMOTE_IMAGES).forEach((url) => {
+  useTexture.preload(url)
+})
+
+function EmoteSprite({
+  item,
+  y,
+  order,
+}: {
+  item: EmoteItem
+  y: number
+  order: number
+}) {
   const anchor = useRef<THREE.Group>(null!)
   const sprite = useRef<THREE.Sprite>(null!)
   const material = useRef<THREE.SpriteMaterial>(null!)
@@ -23,21 +42,13 @@ function EmoteSprite({ item, y }: { item: EmoteItem; y: number }) {
     const radius = 0.62 + Math.random() * 0.22
     return [Math.cos(angle) * radius, Math.sin(angle) * radius * 0.72]
   }, [item.id])
+  const image = useTexture(EMOTE_IMAGES[item.emoji])
+
   const texture = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 192
-    canvas.height = 192
-    const ctx = canvas.getContext('2d')!
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    ctx.font = '128px "Apple Color Emoji", "Segoe UI Emoji", sans-serif'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(item.emoji, 96, 100)
-    const map = new THREE.CanvasTexture(canvas)
-    map.colorSpace = THREE.SRGBColorSpace
-    map.anisotropy = 4
-    return map
-  }, [item.emoji])
+    image.colorSpace = THREE.SRGBColorSpace
+    image.anisotropy = 4
+    return image
+  }, [image])
 
   useFrame(({ camera }) => {
     if (!anchor.current || !sprite.current || !material.current) return
@@ -63,7 +74,7 @@ function EmoteSprite({ item, y }: { item: EmoteItem; y: number }) {
     <>
       <group ref={anchor} />
       {createPortal(
-        <sprite ref={sprite} renderOrder={12}>
+        <sprite ref={sprite} renderOrder={12 + order}>
           <spriteMaterial
             ref={material}
             map={texture}
@@ -82,8 +93,10 @@ function EmoteSprite({ item, y }: { item: EmoteItem; y: number }) {
 function EmoteBurst({ emotes, y }: { emotes: EmoteItem[]; y: number }) {
   return (
     <>
-      {emotes.map((item) => (
-        <EmoteSprite key={item.id} item={item} y={y} />
+      {emotes.map((item, index) => (
+        <Suspense key={item.id} fallback={null}>
+          <EmoteSprite item={item} y={y} order={index} />
+        </Suspense>
       ))}
     </>
   )
@@ -156,90 +169,90 @@ export function Avatar({ look = DEFAULT_LOOK, name, moving, seated, bubble, stat
     <group>
       {/* Stretched a little taller, with the head scaled back down: older, leaner proportions. */}
       <group scale={[0.95, 1.14, 0.95]}>
-      <group ref={body}>
-        {leg(legL, -0.075)}
-        {leg(legR, 0.075)}
-        {/* tunic with a belt */}
-        <mesh position={[0, 0.53, 0]} material={toon(look.robe)} castShadow>
-          <cylinderGeometry args={[0.12, 0.17, 0.36, 14]} />
-          <Line />
-        </mesh>
-        <mesh position={[0, 0.43, 0]} material={toon(BOOTS)}>
-          <cylinderGeometry args={[0.158, 0.165, 0.05, 14]} />
-        </mesh>
-        <mesh position={[0, 0.43, 0.16]} material={toon(look.trim)}>
-          <boxGeometry args={[0.06, 0.06, 0.02]} />
-        </mesh>
-        {arm(armL, -1)}
-        {arm(armR, 1)}
-        {/* short cape pinned at the collar */}
-        <mesh position={[0, 0.71, 0]} material={toon(look.trim)}>
-          <cylinderGeometry args={[0.09, 0.15, 0.07, 14]} />
-        </mesh>
-        <group ref={cape} position={[0, 0.72, -0.1]}>
-          <mesh position={[0, -0.2, -0.02]} material={toon(look.trim)} castShadow>
-            <boxGeometry args={[0.34, 0.42, 0.035]} />
+        <group ref={body}>
+          {leg(legL, -0.075)}
+          {leg(legR, 0.075)}
+          {/* tunic with a belt */}
+          <mesh position={[0, 0.53, 0]} material={toon(look.robe)} castShadow>
+            <cylinderGeometry args={[0.12, 0.17, 0.36, 14]} />
             <Line />
           </mesh>
-        </group>
-        <mesh position={[0, 0.76, 0]} material={toon(look.skin)}>
-          <cylinderGeometry args={[0.045, 0.05, 0.08, 8]} />
-        </mesh>
-        <group ref={head} position={[0, 0.93, 0]} scale={[0.97, 0.81, 0.97]}>
-          <mesh scale={[1, 1.04, 0.98]} material={toon(look.skin)} castShadow>
-            <sphereGeometry args={[0.2, 18, 14]} />
-            <Line />
+          <mesh position={[0, 0.43, 0]} material={toon(BOOTS)}>
+            <cylinderGeometry args={[0.158, 0.165, 0.05, 14]} />
           </mesh>
-          <mesh position={[0, 0.025, -0.025]} material={toon(look.hair)}>
-            <sphereGeometry args={[0.212, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.56]} />
-            <Line />
+          <mesh position={[0, 0.43, 0.16]} material={toon(look.trim)}>
+            <boxGeometry args={[0.06, 0.06, 0.02]} />
           </mesh>
-          {TUFTS.map(([x, y, z, rx, rz, len], i) => (
-            <mesh key={i} position={[x, y, z]} rotation={[rx, 0, rz]} material={toon(look.hair)}>
-              <coneGeometry args={[0.07, len, 6]} />
+          {arm(armL, -1)}
+          {arm(armR, 1)}
+          {/* short cape pinned at the collar */}
+          <mesh position={[0, 0.71, 0]} material={toon(look.trim)}>
+            <cylinderGeometry args={[0.09, 0.15, 0.07, 14]} />
+          </mesh>
+          <group ref={cape} position={[0, 0.72, -0.1]}>
+            <mesh position={[0, -0.2, -0.02]} material={toon(look.trim)} castShadow>
+              <boxGeometry args={[0.34, 0.42, 0.035]} />
+              <Line />
             </mesh>
-          ))}
-          {[-1, 1].map((sx) => (
-            <group key={sx} position={[sx * 0.075, -0.015, 0.178]}>
-              <mesh scale={[1, 1.35, 0.35]} material={toon('#ffffff')}>
-                <sphereGeometry args={[0.042, 10, 8]} />
-              </mesh>
-              <mesh position={[0, -0.004, 0.012]} scale={[1, 1.3, 0.35]} material={toon('#3b2a20')}>
-                <sphereGeometry args={[0.03, 10, 8]} />
-              </mesh>
-              <mesh position={[0.01, 0.014, 0.022]} material={toon('#ffffff')}>
-                <sphereGeometry args={[0.009, 6, 4]} />
-              </mesh>
-              <mesh position={[0, 0.062, 0.004]} rotation-z={sx * -0.15} material={toon(look.hair)}>
-                <boxGeometry args={[0.07, 0.014, 0.01]} />
-              </mesh>
-            </group>
-          ))}
-          {[-1, 1].map((sx) => (
-            <mesh key={sx} position={[sx * 0.125, -0.07, 0.15]} scale={[1, 0.55, 0.3]} material={toon('#ffa99a')}>
-              <sphereGeometry args={[0.036, 8, 6]} />
-            </mesh>
-          ))}
-          <mesh position={[0, -0.095, 0.19]} scale={[1, 0.45, 0.4]} material={toon('#c9705f')}>
-            <sphereGeometry args={[0.022, 8, 6]} />
+          </group>
+          <mesh position={[0, 0.76, 0]} material={toon(look.skin)}>
+            <cylinderGeometry args={[0.045, 0.05, 0.08, 8]} />
           </mesh>
-          {look.hat && (
-            <group position={[0, 0.17, -0.02]} rotation-x={-0.14}>
-              <mesh material={toon(look.robe)} castShadow>
-                <cylinderGeometry args={[0.32, 0.32, 0.03, 18]} />
-                <Line />
+          <group ref={head} position={[0, 0.93, 0]} scale={[0.97, 0.81, 0.97]}>
+            <mesh scale={[1, 1.04, 0.98]} material={toon(look.skin)} castShadow>
+              <sphereGeometry args={[0.2, 18, 14]} />
+              <Line />
+            </mesh>
+            <mesh position={[0, 0.025, -0.025]} material={toon(look.hair)}>
+              <sphereGeometry args={[0.212, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.56]} />
+              <Line />
+            </mesh>
+            {TUFTS.map(([x, y, z, rx, rz, len], i) => (
+              <mesh key={i} position={[x, y, z]} rotation={[rx, 0, rz]} material={toon(look.hair)}>
+                <coneGeometry args={[0.07, len, 6]} />
               </mesh>
-              <mesh position={[0, 0.2, 0]} material={toon(look.robe)} castShadow>
-                <coneGeometry args={[0.19, 0.42, 14]} />
-                <Line />
+            ))}
+            {[-1, 1].map((sx) => (
+              <group key={sx} position={[sx * 0.075, -0.015, 0.178]}>
+                <mesh scale={[1, 1.35, 0.35]} material={toon('#ffffff')}>
+                  <sphereGeometry args={[0.042, 10, 8]} />
+                </mesh>
+                <mesh position={[0, -0.004, 0.012]} scale={[1, 1.3, 0.35]} material={toon('#3b2a20')}>
+                  <sphereGeometry args={[0.03, 10, 8]} />
+                </mesh>
+                <mesh position={[0.01, 0.014, 0.022]} material={toon('#ffffff')}>
+                  <sphereGeometry args={[0.009, 6, 4]} />
+                </mesh>
+                <mesh position={[0, 0.062, 0.004]} rotation-z={sx * -0.15} material={toon(look.hair)}>
+                  <boxGeometry args={[0.07, 0.014, 0.01]} />
+                </mesh>
+              </group>
+            ))}
+            {[-1, 1].map((sx) => (
+              <mesh key={sx} position={[sx * 0.125, -0.07, 0.15]} scale={[1, 0.55, 0.3]} material={toon('#ffa99a')}>
+                <sphereGeometry args={[0.036, 8, 6]} />
               </mesh>
-              <mesh position={[0, 0.045, 0]} material={toon(look.trim)}>
-                <cylinderGeometry args={[0.175, 0.19, 0.06, 14]} />
-              </mesh>
-            </group>
-          )}
+            ))}
+            <mesh position={[0, -0.095, 0.19]} scale={[1, 0.45, 0.4]} material={toon('#c9705f')}>
+              <sphereGeometry args={[0.022, 8, 6]} />
+            </mesh>
+            {look.hat && (
+              <group position={[0, 0.17, -0.02]} rotation-x={-0.14}>
+                <mesh material={toon(look.robe)} castShadow>
+                  <cylinderGeometry args={[0.32, 0.32, 0.03, 18]} />
+                  <Line />
+                </mesh>
+                <mesh position={[0, 0.2, 0]} material={toon(look.robe)} castShadow>
+                  <coneGeometry args={[0.19, 0.42, 14]} />
+                  <Line />
+                </mesh>
+                <mesh position={[0, 0.045, 0]} material={toon(look.trim)}>
+                  <cylinderGeometry args={[0.175, 0.19, 0.06, 14]} />
+                </mesh>
+              </group>
+            )}
+          </group>
         </group>
-      </group>
       </group>
       {name && <Label text={status ? `${name} · ${status}` : name} streak={streak} y={-0.18} placement="below" />}
       {bubble && <Label text={bubble} y={look.hat ? 1.75 : 1.49} bubble />}

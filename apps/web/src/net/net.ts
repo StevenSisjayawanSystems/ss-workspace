@@ -56,7 +56,13 @@ export interface ChatLine {
 // The conversation a line belongs to: '' for the room, otherwise the other person's member key.
 export const talkOf = (line: ChatLine, me: string) => (line.to ? (line.from === me ? line.to : line.from) : '')
 
-export const EMOTES = { wave: '👋', heart: '❤️', laugh: '😂', cheer: '🎉' } as const
+export const EMOTES = {
+  wave: 'wave',
+  heart: 'heart',
+  laugh: 'laugh',
+  cheer: 'cheer',
+} as const
+
 export type Emote = keyof typeof EMOTES
 
 export interface JukeTrack {
@@ -546,7 +552,7 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
             .then((late) => {
               if (late !== room) void late.leave()
             })
-            .catch(() => {})
+            .catch(() => { })
           reject(new Error('timed out'))
         }, CONNECT_TIMEOUT_MS),
       ),
@@ -694,7 +700,7 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
       if (emoji) emote(m.id, emoji)
     })
     joined.onLeave(() => disconnected(profile))
-    joined.onError(() => {})
+    joined.onError(() => { })
 
     let last = ''
     sendTimer = setInterval(() => {

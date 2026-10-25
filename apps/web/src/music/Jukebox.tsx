@@ -189,7 +189,14 @@ export function Jukebox() {
   return (
     <div className={`jukebox ${open ? 'open' : ''}`} hidden={!online}>
       <div className="juke-head">
-        <button className="icon-btn on" aria-label={open ? 'Close jukebox' : 'Open jukebox'} title={open ? 'Close jukebox' : 'Open jukebox'} onClick={() => setOpen(!open)}>
+        <button
+          className="icon-btn on"
+          aria-expanded={open}
+          aria-controls="jukebox-panel"
+          aria-label={open ? 'Close jukebox' : 'Open jukebox'}
+          title={open ? 'Close jukebox' : 'Open jukebox'}
+          onClick={() => setOpen(!open)}
+        >
           <Icon.note />
         </button>
         <div className="juke-now">
@@ -224,7 +231,7 @@ export function Jukebox() {
       )}
       {/* The player stays mounted while collapsed so the music keeps going. */}
       <div className="juke-video" ref={holder} style={{ display: current ? undefined : 'none' }} />
-      <div className="juke-body">
+      <div className="juke-body" id="jukebox-panel">
         <form onSubmit={add}>
           <input value={url} placeholder="Paste a YouTube link" onChange={(e) => setUrl(e.target.value)} />
           <button className="icon-btn" aria-label="Add to queue" title="Add to queue">

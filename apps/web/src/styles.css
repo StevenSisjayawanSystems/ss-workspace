@@ -1261,7 +1261,7 @@ button.status:hover {
 
 .pomo {
   position: absolute;
-  top: calc(max(16px, env(safe-area-inset-top)) + 104px);
+  top: calc(max(16px, env(safe-area-inset-top)) + 140px);
   left: max(14px, env(safe-area-inset-left));
   width: 250px;
   padding: 14px;
@@ -1271,6 +1271,17 @@ button.status:hover {
   box-shadow: var(--edge);
   pointer-events: auto;
   z-index: 2;
+}
+
+.pomo-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+.pomo > .pomo-tabs,
+.pomo > .pomo-phase {
+  margin-right: 40px;
 }
 
 .pomo-phase {
@@ -1349,7 +1360,7 @@ button.status:hover {
 
 /* The roster sits below the timer pill. */
 .roster {
-  top: calc(max(16px, env(safe-area-inset-top)) + 104px);
+  top: calc(max(16px, env(safe-area-inset-top)) + 140px);
   max-height: calc(100vh - 224px);
 }
 
@@ -1461,7 +1472,7 @@ button.status:hover {
 
   .pomo,
   .roster {
-    top: calc(max(16px, env(safe-area-inset-top)) + 180px);
+    top: calc(max(16px, env(safe-area-inset-top)) + 216px);
   }
 
   .ring {
@@ -1677,7 +1688,6 @@ body:has(.call.focus) .jukebox:not(.open) .juke-video {
   }
 }
 
-
 /* Responsive lower HUD: avoid collisions with chat, task tracker and hints. */
 .minimap {
   width: clamp(110px, 15vw, 210px);
@@ -1808,18 +1818,23 @@ body:has(.meditation:not([hidden])) .call.quiet {
   }
 }
 
-/* Board and tasks pills, next to the timer */
+/* Board and tasks continue the primary control rail below the timer. */
 .side-pills {
   position: absolute;
-  top: calc(max(16px, env(safe-area-inset-top)) + 68px);
-  left: calc(max(14px, env(safe-area-inset-left)) + 118px);
+  top: calc(max(16px, env(safe-area-inset-top)) + 104px);
+  left: max(14px, env(safe-area-inset-left));
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: 8px;
+  z-index: 5;
+  transition: opacity 0.16s ease, transform 0.16s ease, visibility 0.16s;
 }
 
 .notes-pill {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 6px;
   padding: 4px 12px 4px 9px;
   font-size: 13px;
@@ -1831,7 +1846,7 @@ body:has(.meditation:not([hidden])) .call.quiet {
 }
 
 .pomo-pill:not(.idle)~.side-pills {
-  left: calc(max(14px, env(safe-area-inset-left)) + 150px);
+  left: max(14px, env(safe-area-inset-left));
 }
 
 .notes-pill {
@@ -4753,11 +4768,9 @@ button.task-tag:hover {
 
 /* The corner is shared: with the roster or timer open above, or the chat stretched tall, or on a
    short or touch screen, the tracker keeps to its heading and the tasks wait behind it. */
-body:has(.roster) .quests-body,
-body:has(.pomo) .quests-body,
-.chat.tall .quests-body {
-  display: none;
-}
+   .chat.tall .quests-body {
+    display: none;
+  }
 
 @media (max-height: 560px),
 (pointer: coarse) {
@@ -4862,6 +4875,17 @@ body:has(.pomo) .chat-people {
   max-height: 84px;
 }
 
+/* Hide lower-left controls only when the viewport cannot fit both panels. */
+@media (max-width: 1100px), (max-height: 700px) {  body:has(.pomo) .chat:not(.docked),
+  body:has(.pomo) .joystick,
+  body:has(.roster) .chat:not(.docked),
+  body:has(.roster) .joystick {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
 .profile-note {
   margin: 10px 0 0;
   font-size: 11.500px;
@@ -4948,7 +4972,7 @@ body:has(.pomo) .chat-people {
 
 @media (pointer: coarse) {
   .side-pills {
-    top: calc(max(16px, env(safe-area-inset-top)) + 144px);
+    top: calc(max(16px, env(safe-area-inset-top)) + 180px);
   }
 }
 
@@ -5501,20 +5525,22 @@ button.task-star:active {
   }
 
   .pomo-pill {
-    top: calc(max(12px, env(safe-area-inset-top)) + 190px);
+    top: calc(max(12px, env(safe-area-inset-top)) + 146px);
     left: max(12px, env(safe-area-inset-left));
   }
-
+  
   .side-pills,
   .pomo-pill:not(.idle) ~ .side-pills {
-    top: calc(max(12px, env(safe-area-inset-top)) + 190px);
-    left: max(158px, calc(env(safe-area-inset-left) + 158px));
-    gap: clamp(5px, 0.8vw, 8px);
+    top: calc(max(12px, env(safe-area-inset-top)) + 182px);
+    left: max(12px, env(safe-area-inset-left));
+    right: auto;
+    flex-wrap: nowrap;
+    gap: 8px;
   }
 
   .pomo,
   .roster {
-    top: calc(max(12px, env(safe-area-inset-top)) + 228px);
+    top: calc(max(12px, env(safe-area-inset-top)) + 218px);
   }
 
   .jukebox.open {
@@ -5553,8 +5579,8 @@ button.task-star:active {
 
   .side-pills,
   .pomo-pill:not(.idle) ~ .side-pills {
-    left: 102px;
-    gap: 5px;
+    left: max(12px, env(safe-area-inset-left));
+    gap: 8px;
   }
 
   .notes-pill {
@@ -5602,4 +5628,47 @@ button.task-star:active {
     top: max(14px, env(safe-area-inset-top));
     right: 12px;
   }
+}
+
+/* Compact jukebox on smaller screens. */
+@media (max-width: 1100px) {
+  .jukebox:not(.open),
+  body:has(.call.focus) .jukebox:not(.open) {
+    display: block;
+    width: max-content;
+    max-width: calc(100vw - 24px);
+    padding: 6px;
+  }
+
+  .jukebox:not(.open) .juke-head,
+  body:has(.call.focus) .jukebox:not(.open) .juke-head {
+    flex: none;
+    gap: 0;
+  }
+
+  .jukebox:not(.open) .juke-head > :not(:first-child) {
+    display: none;
+  }
+
+  .jukebox:not(.open) .juke-video,
+  body:has(.call.focus) .jukebox:not(.open) .juke-video {
+    display: none;
+  }
+
+  .jukebox.open .juke-head {
+    flex-wrap: wrap;
+  }
+
+  .jukebox.open .juke-now {
+    flex: 1 1 120px;
+  }
+
+  .jukebox .juke-head > .icon-btn {
+    flex: 0 0 auto;
+  }
+}
+
+/* Hide the jukebox while offline. */
+body .jukebox[hidden] {
+  display: none;
 }

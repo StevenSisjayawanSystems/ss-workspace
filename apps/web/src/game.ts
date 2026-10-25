@@ -55,6 +55,8 @@ interface GameState {
   hoverSeat: string | null
   setHoverSeat: (id: string | null) => void
   jukeOpen: boolean
+  pomoOpen: boolean
+  rosterOpen: boolean
   // Whose profile card is open (a session id, or 'self'), and whether the bulletin board is open.
   profileOf: string | null
   boardOpen: boolean
@@ -64,6 +66,8 @@ interface GameState {
   // What you are up to, shown to others. Empty means nothing in particular.
   status: string
   setJukeOpen: (open: boolean) => void
+  setPomoOpen: (open: boolean) => void
+  setRosterOpen: (open: boolean) => void
   // Incremented when the server moves us, so any route in progress is dropped.
   snaps: number
   snapTo: (x: number, z: number) => void
@@ -88,12 +92,16 @@ export const useGame = create<GameState>((set, get) => ({
   hoverSeat: null,
   setHoverSeat: (hoverSeat) => set({ hoverSeat }),
   jukeOpen: false,
+  pomoOpen: false,
+  rosterOpen: false,
   profileOf: null,
   boardOpen: false,
   tasksOpen: false,
   scheduleOf: null,
   status: loadStatus(),
-  setJukeOpen: (jukeOpen) => set({ jukeOpen }),
+  setJukeOpen: (jukeOpen) => set({ jukeOpen, ...(jukeOpen ? { pomoOpen: false } : {}) }),
+  setPomoOpen: (pomoOpen) => set({ pomoOpen, ...(pomoOpen ? { jukeOpen: false, rosterOpen: false } : {}) }),
+  setRosterOpen: (rosterOpen) => set({ rosterOpen, ...(rosterOpen ? { pomoOpen: false } : {}) }),
   snaps: 0,
   snapTo: (x, z) => {
     player.x = x
