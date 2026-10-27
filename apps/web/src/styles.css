@@ -1279,8 +1279,8 @@ button.status:hover {
   right: 10px;
 }
 
-.pomo > .pomo-tabs,
-.pomo > .pomo-phase {
+.pomo>.pomo-tabs,
+.pomo>.pomo-phase {
   margin-right: 40px;
 }
 
@@ -1710,6 +1710,7 @@ body:has(.call.focus) .jukebox:not(.open) .juke-video {
 
 /* With the task tracker or tall chat expanded, preserve the text instead of overlapping it with the map. */
 @media (max-width: 900px) {
+
   body:has(.chat:not(.docked) .quests-body) .minimap,
   body:has(.chat.tall:not(.docked)) .minimap {
     display: none;
@@ -4768,9 +4769,9 @@ button.task-tag:hover {
 
 /* The corner is shared: with the roster or timer open above, or the chat stretched tall, or on a
    short or touch screen, the tracker keeps to its heading and the tasks wait behind it. */
-   .chat.tall .quests-body {
-    display: none;
-  }
+.chat.tall .quests-body {
+  display: none;
+}
 
 @media (max-height: 560px),
 (pointer: coarse) {
@@ -4876,7 +4877,10 @@ body:has(.pomo) .chat-people {
 }
 
 /* Hide lower-left controls only when the viewport cannot fit both panels. */
-@media (max-width: 1100px), (max-height: 700px) {  body:has(.pomo) .chat:not(.docked),
+@media (max-width: 1100px),
+(max-height: 700px) {
+
+  body:has(.pomo) .chat:not(.docked),
   body:has(.pomo) .joystick,
   body:has(.roster) .chat:not(.docked),
   body:has(.roster) .joystick {
@@ -5514,7 +5518,7 @@ button.task-star:active {
 
   .jukebox,
   .jukebox:not(.open) {
-    top: calc(max(12px, env(safe-area-inset-top)) + 110px);
+    top: calc(max(12px, env(safe-area-inset-top)) + 74px);
     right: max(12px, env(safe-area-inset-right));
     width: clamp(160px, 23vw, 250px);
     max-width: calc(100vw - 220px);
@@ -5528,9 +5532,9 @@ button.task-star:active {
     top: calc(max(12px, env(safe-area-inset-top)) + 146px);
     left: max(12px, env(safe-area-inset-left));
   }
-  
+
   .side-pills,
-  .pomo-pill:not(.idle) ~ .side-pills {
+  .pomo-pill:not(.idle)~.side-pills {
     top: calc(max(12px, env(safe-area-inset-top)) + 182px);
     left: max(12px, env(safe-area-inset-left));
     right: auto;
@@ -5578,7 +5582,7 @@ button.task-star:active {
   }
 
   .side-pills,
-  .pomo-pill:not(.idle) ~ .side-pills {
+  .pomo-pill:not(.idle)~.side-pills {
     left: max(12px, env(safe-area-inset-left));
     gap: 8px;
   }
@@ -5632,6 +5636,7 @@ button.task-star:active {
 
 /* Compact jukebox on smaller screens. */
 @media (max-width: 1100px) {
+
   .jukebox:not(.open),
   body:has(.call.focus) .jukebox:not(.open) {
     display: block;
@@ -5646,7 +5651,7 @@ button.task-star:active {
     gap: 0;
   }
 
-  .jukebox:not(.open) .juke-head > :not(:first-child) {
+  .jukebox:not(.open) .juke-head> :not(:first-child) {
     display: none;
   }
 
@@ -5663,7 +5668,7 @@ button.task-star:active {
     flex: 1 1 120px;
   }
 
-  .jukebox .juke-head > .icon-btn {
+  .jukebox .juke-head>.icon-btn {
     flex: 0 0 auto;
   }
 }
