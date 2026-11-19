@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { accounts, savedProfile, signIn, signOut, signUp, useAccount } from '../account'
 import { loadProfile, useGame } from '../game'
 import { loadInvite, rememberInvite } from '../invite'
-import { HAIRS, ROBES } from '../look'
+import { HAIRS, ROBES, SKINS, trimFor } from '../look'
 import { connect, useNet } from '../net/net'
 
 // Matches minimum_password_length in supabase/config.toml.
@@ -153,12 +153,9 @@ export function Join() {
             <span>Name</span>
             <input autoFocus maxLength={20} value={profile.name} onChange={(e) => setProfile((p) => ({ ...p, name: e.target.value }))} />
           </label>
-          <Swatches label="Cloak" colors={ROBES} value={profile.look.robe} onPick={(robe) => setLook({ robe })} />
+          <Swatches label="Skin" colors={SKINS} value={profile.look.skin} onPick={(skin) => setLook({ skin })} />
+          <Swatches label="Cloak" colors={ROBES} value={profile.look.robe} onPick={(robe) => setLook({ robe, trim: trimFor(robe) })} />
           <Swatches label="Hair" colors={HAIRS} value={profile.look.hair} onPick={(hair) => setLook({ hair })} />
-          <label className="field check">
-            <input type="checkbox" checked={profile.look.hat} onChange={(e) => setLook({ hat: e.target.checked })} />
-            <span>Wizard's hat</span>
-          </label>
           {needsCode && (
             <label className="field">
               <span>Invite code</span>

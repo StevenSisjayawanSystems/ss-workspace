@@ -27,6 +27,7 @@ export const Player = schema(
     robe: t.string(),
     trim: t.string(),
     hair: t.string(),
+    skin: t.string(),
     hat: t.boolean(),
     // Id of the seat this player is in, or '' when standing. Seated players in a room share its call.
     seat: t.string(),
@@ -413,7 +414,7 @@ export class OfficeRoom extends Room {
       const me = this.bySession.get(client.sessionId)
       const mine = this.state.players.get(client.sessionId)
       if (!me || !mine || !m) return
-      const card = { name: cleanText(m.name, 20) || me.name, robe: cleanColor(m.robe, mine.robe), trim: cleanColor(m.trim, mine.trim), hair: cleanColor(m.hair, mine.hair), hat: m.hat !== false, about: cleanText(m.about, 160) }
+      const card = { name: cleanText(m.name, 20) || me.name, robe: cleanColor(m.robe, mine.robe), trim: cleanColor(m.trim, mine.trim), hair: cleanColor(m.hair, mine.hair), skin: cleanColor(m.skin, mine.skin), hat: m.hat !== false, about: cleanText(m.about, 160) }
       if (res.renamed(this.state, me.account ? me.key : '', me.name, card.name)) this.saveReservations()
       me.name = card.name
       me.about = card.about
@@ -933,6 +934,7 @@ export class OfficeRoom extends Room {
     p.robe = cleanColor(options.robe, '#4a6fa5')
     p.trim = cleanColor(options.trim, '#e0b04a')
     p.hair = cleanColor(options.hair, '#7a4a2a')
+    p.skin = cleanColor(options.skin, '#f0c6b3')
     p.hat = options.hat !== false
     p.seat = ''
     p.joinedAt = Date.now()
@@ -959,7 +961,7 @@ export class OfficeRoom extends Room {
     const known = this.people.get(member.key)?.name === name
     this.people.set(member.key, { id: member.key, name })
     this.saveMembers([member])
-    this.writes = this.writes.then(() => db!.saveCard(member.key, { robe: p.robe, trim: p.trim, hair: p.hair, hat: p.hat })).catch(warn)
+    this.writes = this.writes.then(() => db!.saveCard(member.key, { robe: p.robe, trim: p.trim, hair: p.hair, skin: p.skin, hat: p.hat })).catch(warn)
     if (known) client.send('people', [...this.people.values()])
     else this.broadcast('people', [...this.people.values()])
     void this.writes.then(() => db!.history(member.key)).then((lines) => client.send('chat:history', lines), warn)

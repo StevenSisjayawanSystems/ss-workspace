@@ -5,3 +5,4 @@ dist
 .env.local
 .DS_Store
 apps/web/public/mediapipe
+*.blend1

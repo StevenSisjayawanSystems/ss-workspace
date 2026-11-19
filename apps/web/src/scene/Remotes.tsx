@@ -6,6 +6,7 @@ import { useGame } from '../game'
 import { remotes, useNet } from '../net/net'
 import { Avatar } from './Avatar'
 import { Label } from './Label'
+import { WIZARD_HEIGHT } from './WizardModel'
 
 function RemoteAvatar({ id }: { id: string }) {
   const group = useRef<THREE.Group>(null!)
@@ -61,7 +62,7 @@ function RemoteAvatar({ id }: { id: string }) {
       <mesh position={[0, 0.7, 0]} visible={false} onPointerOver={over} onPointerOut={out} onClick={click}>
         <cylinderGeometry args={[0.34, 0.34, 1.4, 10]} />
       </mesh>
-      {hover && !bubble && <Label text="View profile" y={info.look.hat ? 2.08 : 1.82} />}
+      {hover && !bubble && <Label text="View profile" y={WIZARD_HEIGHT + 0.35} />}
     </group>
   )
 }

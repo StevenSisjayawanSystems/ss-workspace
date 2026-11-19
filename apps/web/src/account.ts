@@ -47,6 +47,6 @@ export async function accessToken(): Promise<string> {
 // The name and look last used on this account, for a browser that has not seen them yet.
 export async function savedProfile(): Promise<Profile | null> {
   if (!supabase) return null
-  const { data } = await supabase.from('members').select('name, robe, trim, hair, hat').maybeSingle()
-  return data?.name ? { name: data.name, look: { ...DEFAULT_LOOK, robe: data.robe, trim: data.trim, hair: data.hair, hat: data.hat } } : null
+  const { data } = await supabase.from('members').select('name, robe, trim, hair, hat, skin').maybeSingle()
+  return data?.name ? { name: data.name, look: { ...DEFAULT_LOOK, robe: data.robe, trim: data.trim, hair: data.hair, skin: data.skin ?? DEFAULT_LOOK.skin, hat: data.hat } } : null
 }

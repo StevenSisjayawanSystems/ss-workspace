@@ -10,6 +10,7 @@ export interface Card {
   robe: string
   trim: string
   hair: string
+  skin: string
   hat: boolean
   about: string
 }

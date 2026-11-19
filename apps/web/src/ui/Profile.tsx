@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { BADGES, PLANT_SECONDS, QUIET_ZONES, bedOf, bondPoints, bondTier, formatDuration, levelOf, roomById, seatById, speciesFor, titleOf, xpOf, type BondWith, type Progress, type ZoneId } from '@guildhouse/shared'
 import { useGame } from '../game'
-import { HAIRS, ROBES } from '../look'
+import { HAIRS, ROBES, SKINS, trimFor } from '../look'
 import { askBonds, bedFor, friends, seedOf, todo, joinCallIn, openTalk, remotes, ringPerson, saveCard, serverNow, useNet } from '../net/net'
 import { useStats } from '../stats'
 import { when } from '../time'
@@ -38,12 +38,9 @@ function Edit({ about, onDone }: { about: string; onDone: () => void }) {
             <span>Name</span>
             <input autoFocus maxLength={20} value={profile.name} onChange={(e) => setProfile((p) => ({ ...p, name: e.target.value }))} />
           </label>
-          <Swatches label="Cloak" colors={ROBES} value={profile.look.robe} onPick={(robe) => setLook({ robe })} />
+          <Swatches label="Skin" colors={SKINS} value={profile.look.skin} onPick={(skin) => setLook({ skin })} />
+          <Swatches label="Cloak" colors={ROBES} value={profile.look.robe} onPick={(robe) => setLook({ robe, trim: trimFor(robe) })} />
           <Swatches label="Hair" colors={HAIRS} value={profile.look.hair} onPick={(hair) => setLook({ hair })} />
-          <label className="field check">
-            <input type="checkbox" checked={profile.look.hat} onChange={(e) => setLook({ hat: e.target.checked })} />
-            <span>Wizard's hat</span>
-          </label>
         </div>
       </div>
       <label className="field">
