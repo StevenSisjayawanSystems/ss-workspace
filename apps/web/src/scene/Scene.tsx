@@ -8,6 +8,7 @@ import { Building } from './Building'
 import { CameraRig } from './CameraRig'
 import { Bush, FurnitureLayer, Piece, Rock } from './Furniture'
 import { Ink } from './Ink'
+import { StaticBatch } from './StaticBatch'
 import { labelOverlayScene } from './Label'
 import { CloudShadows, Grass, Path, Wildflowers } from './Nature'
 import { Player } from './Player'
@@ -131,6 +132,8 @@ export function Scene({ profile }: { profile: Profile | null }) {
         <Lamplight />
         <Mood bloom={bloom} vignette={vignette} />
         <Building />
+        {/* Scenery merged into a few meshes so the GPU draws dozens of things per frame, not 1,500. */}
+        <StaticBatch>
         <FurnitureLayer />
         {BACKDROP.map(([x, z, s], i) => (
           <group key={i} position={[x, 0, z]} scale={s}>
@@ -147,6 +150,7 @@ export function Scene({ profile }: { profile: Profile | null }) {
             <Rock />
           </group>
         ))}
+        </StaticBatch>
         <Path />
         <Grass />
         <Wildflowers />

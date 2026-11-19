@@ -1876,6 +1876,8 @@ body:has(.meditation:not([hidden])) .call.quiet {
   position: fixed;
   inset: 0;
   display: grid;
+  /* One cell exactly the size of the screen, so the cork board scrolls inside the dialog instead of stretching it. */
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   place-items: center;
   padding: 16px;
   background: rgba(8, 13, 22, 0.6);
@@ -2380,6 +2382,11 @@ body:has(.meditation:not([hidden])) .call.quiet {
   background: #0e1726;
 }
 
+/* Lane tabs stand in for the plaques that are out of view, on a phone only. */
+.board-lane-tabs {
+  display: none;
+}
+
 .board-stick {
   flex: none;
   display: flex;
@@ -2412,32 +2419,207 @@ body:has(.meditation:not([hidden])) .call.quiet {
 }
 
 @media (max-width: 640px) {
+
+  /* On a phone the board takes the whole screen, clear of the notch and the home bar. */
   .board-scrim {
-    padding: 8px;
+    padding: 0;
   }
 
   .board {
-    padding: 10px;
-  }
-
-  .board-new {
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-
-  .board-pad {
     width: 100%;
-    transform: none;
-  }
-
-  .board-pad .richpad-page {
-    min-height: 44px;
-    max-height: 90px;
+    height: 100%;
+    padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+    background: rgb(14, 23, 38);
+    border-radius: 0;
+    box-shadow: none;
   }
 
   .board-faces button {
     padding: 6px 9px;
     letter-spacing: 0.08em;
+  }
+
+  .board-frame {
+    margin-top: 10px;
+    border-width: 6px;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+
+  .board-frame::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Dragging a note slides the board along, which snapping would fight. */
+  .board-frame.holding {
+    scroll-snap-type: none;
+  }
+
+  /* One lane at a time, with a sliver of the next showing so it is plain there is more to swipe to. */
+  .board-surface.features {
+    width: 336%;
+    min-width: 0;
+    min-height: 240px;
+  }
+
+  .board-lanes>div {
+    scroll-snap-align: center;
+  }
+
+  .board-lane-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    margin-top: 10px;
+  }
+
+  .board-lane-tabs button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-width: 0;
+    padding: 7px 4px;
+    font: 700 11.5px var(--ui);
+    white-space: nowrap;
+    color: #9aa5b8;
+    background: none;
+    border: 1px solid transparent;
+    border-bottom: 2px solid rgba(154, 165, 184, 0.2);
+    border-radius: 2px 2px 0 0;
+    cursor: pointer;
+    --lane: var(--gold);
+  }
+
+  .board-lane-tabs .doing {
+    --lane: #6fb8ad;
+  }
+
+  .board-lane-tabs .done {
+    --lane: #93c46f;
+  }
+
+  .board-lane-tabs .remove {
+    --lane: #e07a5f;
+  }
+
+  .board-lane-tabs i {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    background: var(--lane);
+    transform: rotate(45deg);
+  }
+
+  .board-lane-tabs b {
+    font-weight: 800;
+    color: var(--cream);
+    opacity: 0.6;
+  }
+
+  .board-lane-tabs button.on {
+    color: var(--cream);
+    border-bottom-color: var(--lane);
+  }
+
+  .board-lane-tabs button.on b {
+    opacity: 1;
+  }
+
+  .board-lane-tabs+.board-frame {
+    margin-top: 6px;
+  }
+
+  .board-surface.fun .board-empty {
+    justify-items: start;
+    padding-left: 20px;
+  }
+
+  /* Writing a note: one line of pad until there is something on it, then the rest of the choices. */
+  .board-new {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .board-pad {
+    width: 100%;
+    padding: 12px 12px 18px;
+    transform: none;
+  }
+
+  .board-pad .richpad-page {
+    min-height: 22px;
+    max-height: 96px;
+  }
+
+  .board-new:not(.drafting) .board-pad:not(:focus-within) .richpad-tools,
+  .board-new:not(.drafting) .board-new-side,
+  .board-new:not(.drafting) .board-stick {
+    display: none;
+  }
+
+  .board-new-side {
+    gap: 10px;
+    padding: 0;
+  }
+
+  .board-opt {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .board-opt>span {
+    flex: none;
+    width: 66px;
+    margin: 0;
+  }
+
+  .board-colors button {
+    width: 30px;
+    height: 30px;
+  }
+
+  .board-lane-pick {
+    flex-wrap: nowrap;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .board-lane-pick::-webkit-scrollbar {
+    display: none;
+  }
+
+  .board-lane-pick button {
+    flex: none;
+    padding: 8px 11px 8px 9px;
+    white-space: nowrap;
+  }
+
+  .board-stick {
+    justify-content: center;
+    padding: 13px;
+  }
+}
+
+@media (max-width: 360px) {
+  .board-lane-tabs {
+    gap: 2px;
+  }
+
+  .board-lane-tabs button {
+    gap: 4px;
+    padding: 7px 2px;
+    font-size: 10.5px;
+  }
+
+  .board-lane-tabs i {
+    display: none;
   }
 }
 
