@@ -444,9 +444,9 @@ function syncPlayers(state: any, selfId: string) {
     const r = remotes.get(id)
     if (r) {
       // A profile can be edited while its owner is here.
-      if (r.name !== p.name || r.look.robe !== p.robe || r.look.hair !== p.hair || r.look.hat !== p.hat) {
+      if (r.name !== p.name || r.look.robe !== p.robe || r.look.hair !== p.hair || r.look.skin !== (p.skin || DEFAULT_LOOK.skin) || r.look.hat !== p.hat) {
         r.name = p.name
-        r.look = { ...r.look, robe: p.robe, trim: p.trim, hair: p.hair, hat: p.hat }
+        r.look = { ...r.look, robe: p.robe, trim: p.trim, hair: p.hair, skin: p.skin || DEFAULT_LOOK.skin, hat: p.hat }
         cast++
       }
       r.metres = p.metres
@@ -471,7 +471,7 @@ function syncPlayers(state: any, selfId: string) {
         id,
         name: p.name,
         member: p.member,
-        look: { ...DEFAULT_LOOK, robe: p.robe, trim: p.trim, hair: p.hair, hat: p.hat },
+        look: { ...DEFAULT_LOOK, robe: p.robe, trim: p.trim, hair: p.hair, skin: p.skin || DEFAULT_LOOK.skin, hat: p.hat },
         zone: p.zone,
         seat: p.seat,
         joinedAt: p.joinedAt,
@@ -539,11 +539,11 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
   clearTimeout(retryTimer)
   useNet.setState({ status: 'connecting' })
   try {
-    const { robe, trim, hair, hat } = profile.look
+    const { robe, trim, hair, skin, hat } = profile.look
     const token = await accessToken()
     // An unreachable server can leave the browser waiting a long time; give up after a few seconds
     // so the title screen never hangs, and drop the connection if it turns up late.
-    const attempt = new Client(SERVER_URL).joinOrCreate<any>('office', { name: profile.name, robe, trim, hair, hat, code, token, status: useGame.getState().status, carry: carried(), tzOffset: new Date().getTimezoneOffset() })
+    const attempt = new Client(SERVER_URL).joinOrCreate<any>('office', { name: profile.name, robe, trim, hair, skin, hat, code, token, status: useGame.getState().status, carry: carried(), tzOffset: new Date().getTimezoneOffset() })
     const joined = await Promise.race([
       attempt,
       new Promise<never>((_, reject) =>
@@ -895,8 +895,8 @@ export const friends = {
 // Changes our own name, look and introduction, here and on the account.
 export function saveCard(profile: Profile, about: string) {
   useGame.getState().enter(profile)
-  const { robe, trim, hair, hat } = profile.look
-  room?.send('profile:set', { name: profile.name, robe, trim, hair, hat, about })
+  const { robe, trim, hair, skin, hat } = profile.look
+  room?.send('profile:set', { name: profile.name, robe, trim, hair, skin, hat, about })
 }
 
 // Tells everyone what you are up to; an empty string clears it.

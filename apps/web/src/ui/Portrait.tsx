@@ -15,13 +15,6 @@ export function Portrait({ look }: { look: AvatarLook }) {
       <circle cx="42" cy="49" r="2" fill="#05090f" />
       <circle cx="54" cy="49" r="2" fill="#05090f" />
       <path d="M43 56q5 4 10 0" fill="none" stroke="#05090f" strokeWidth="2" strokeLinecap="round" />
-      {look.hat && (
-        <>
-          <path d="M33 34l17-28 13 28z" fill={look.robe} stroke="#05090f" strokeWidth="2" strokeLinejoin="round" />
-          <path d="M22 36q26-9 52 0-26 7-52 0z" fill={look.robe} stroke="#05090f" strokeWidth="2" strokeLinejoin="round" />
-          <path d="M34 31q14-4 28 0l1 3q-15-4-30 0z" fill={look.trim} stroke="#05090f" strokeWidth="1.5" strokeLinejoin="round" />
-        </>
-      )}
     </svg>
   )
 }

@@ -8,6 +8,7 @@ import { requestSit, standUp, useNet } from '../net/net'
 import { useStats } from '../stats'
 import { Avatar } from './Avatar'
 import { Label } from './Label'
+import { WIZARD_HEIGHT } from './WizardModel'
 import { glow } from './toon'
 
 const KEYS: Record<string, [number, number]> = {
@@ -169,7 +170,7 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
         <mesh position={[0, 0.7, 0]} visible={false} onPointerOver={overSelf} onPointerOut={outSelf} onClick={clickSelf}>
           <cylinderGeometry args={[0.34, 0.34, 1.4, 10]} />
         </mesh>
-        {hover && !bubble && <Label text="Your profile" y={look.hat ? 2.35 : 2.09} />}
+        {hover && !bubble && <Label text="Your profile" y={WIZARD_HEIGHT + 0.35} />}
       </group>
     </>
   )
