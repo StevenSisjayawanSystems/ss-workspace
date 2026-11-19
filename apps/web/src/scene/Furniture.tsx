@@ -96,7 +96,8 @@ function Flicker({ children, speed = 9, amount = 0.12 }: { children: ReactNode; 
     const t = clock.elapsedTime * speed + seed.current
     ref.current.scale.setScalar(1 + Math.sin(t) * amount * 0.6 + Math.sin(t * 2.7) * amount * 0.4)
   })
-  return <group ref={ref}>{children}</group>
+  // Marked so StaticBatch merges its parts with each other and the group keeps moving.
+  return <group ref={ref} userData={{ batchUnit: true }}>{children}</group>
 }
 
 export function Sway({ children, amount = 0.04 }: { children: ReactNode; amount?: number }) {
@@ -106,7 +107,8 @@ export function Sway({ children, amount = 0.04 }: { children: ReactNode; amount?
     ref.current.rotation.z = Math.sin(clock.elapsedTime * 1.3 + seed.current) * amount
     ref.current.rotation.x = Math.cos(clock.elapsedTime * 1.1 + seed.current) * amount * 0.6
   })
-  return <group ref={ref}>{children}</group>
+  // Marked so StaticBatch merges its parts with each other and the group keeps moving.
+  return <group ref={ref} userData={{ batchUnit: true }}>{children}</group>
 }
 
 const BOOKS = [PAL.red, PAL.teal, PAL.blue, PAL.brass, PAL.purple, PAL.green]
@@ -507,7 +509,8 @@ export function Bob({ children }: { children: ReactNode }) {
     ref.current.position.y = Math.sin(clock.elapsedTime * 2) * 0.06
     ref.current.rotation.y = Math.sin(clock.elapsedTime * 0.8) * 0.3
   })
-  return <group ref={ref}>{children}</group>
+  // Marked so StaticBatch merges its parts with each other and the group keeps moving.
+  return <group ref={ref} userData={{ batchUnit: true }}>{children}</group>
 }
 
 export const Bush = () => (
@@ -561,6 +564,8 @@ export function FurnitureLayer() {
           onClick={f.type === 'gramophone' ? openJukebox : f.type === 'noticeBoard' ? openBoard : undefined}
           onPointerOver={f.type === 'gramophone' || f.type === 'noticeBoard' ? pointer : undefined}
           onPointerOut={f.type === 'gramophone' || f.type === 'noticeBoard' ? unpointer : undefined}
+          // Clickable props keep their own meshes.
+          userData={f.type === 'gramophone' || f.type === 'noticeBoard' ? { noBatch: true } : undefined}
         >
           <Piece type={f.type} />
         </group>

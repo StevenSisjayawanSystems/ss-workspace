@@ -163,6 +163,8 @@ export function Board() {
   const me = useNet((s) => s.me)
   const [face, setFace] = useState<BoardId>('features')
   const [lane, setLane] = useState<string>(LANES[0].id)
+  // The lane in view, on a screen too narrow to show them all.
+  const [viewing, setViewing] = useState<string>(LANES[0].id)
   const [text, setText] = useState('')
   const [color, setColor] = useState(NOTE_COLORS[0])
   // The note being dragged and where it is right now, ahead of the server's word.
@@ -173,7 +175,11 @@ export function Board() {
   const [reading, setReading] = useState<string | null>(null)
   const [sheet, setSheet] = useState(0)
   const surface = useRef<HTMLDivElement>(null)
+  const frame = useRef<HTMLDivElement>(null)
   const pad = useRef<HTMLDivElement>(null)
+  // While a note is carried near the edge of a board too wide for the screen, the board slides along under it.
+  const pointer = useRef<{ x: number; y: number } | null>(null)
+  const sliding = useRef(0)
   const drag = useRef<{ id: string; dx: number; dy: number; x: number; y: number; sent: number; moved: boolean; fromX: number; fromY: number } | null>(null)
   const known = useRef<Set<string> | null>(null)
   const launched = useRef<{ x: number; y: number; at: number } | null>(null)
@@ -211,10 +217,34 @@ export function Board() {
     setFresh((f) => ({ ...f, ...flights }))
   }, [notes, open])
 
+  useEffect(() => () => cancelAnimationFrame(sliding.current), [])
+
   if (!open) return null
+
+  // On a narrow screen the lanes are wider than the frame, which scrolls sideways between them.
+  const narrow = () => !!frame.current && frame.current.scrollWidth > frame.current.clientWidth + 1
+  const laneInView = () => {
+    const f = frame.current!
+    return LANES[Math.min(LANES.length - 1, Math.floor(((f.scrollLeft + f.clientWidth / 2) / f.scrollWidth) * LANES.length))].id
+  }
+  const showLane = (id: string) => {
+    const f = frame.current
+    const column = LANES.findIndex((l) => l.id === id)
+    if (!f || !narrow() || column < 0) return
+    const centre = ((column + 0.5) / LANES.length) * f.scrollWidth
+    f.scrollTo({ left: centre - f.clientWidth / 2, behavior: 'smooth' })
+  }
+  // A new note goes in whichever lane is in view, until the writer picks one themselves.
+  const follow = () => {
+    if (face !== 'features' || !narrow()) return
+    const id = laneInView()
+    setViewing(id)
+    if (!text.trim() && !drag.current) setLane(id)
+  }
 
   const shown = notes.filter((n) => n.board === face).sort((a, b) => a.z - b.z)
   const heldLane = held && face === 'features' ? laneAt(held.x).id : null
+  const inLane = (id: string) => shown.filter((n) => laneAt(n.id === held?.id ? held.x : n.x).id === id).length
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault()
@@ -224,14 +254,11 @@ export function Board() {
     const from = pad.current?.getBoundingClientRect()
     if (from) launched.current = { x: from.left + from.width / 2, y: from.top + from.height / 2, at: Date.now() }
     board.add({ text, color, board: face, ...spot })
+    if (face === 'features') showLane(lane)
     setText('')
     setSheet((n) => n + 1)
   }
 
-  const place = (e: PointerEvent, d: { dx: number; dy: number }) => {
-    const rect = surface.current!.getBoundingClientRect()
-    return { x: onBoard((e.clientX - d.dx - rect.left) / rect.width), y: onBoard((e.clientY - d.dy - rect.top) / rect.height) }
-  }
   const grab = (e: PointerEvent<HTMLDivElement>, n: NoteItem) => {
     if ((e.target as HTMLElement).closest('button') || !surface.current) return
     e.currentTarget.setPointerCapture(e.pointerId)
@@ -244,19 +271,45 @@ export function Board() {
     if (!d) return
     // A press that barely moves is a click, which opens the note instead of shifting it.
     if (!d.moved && Math.hypot(e.clientX - d.fromX, e.clientY - d.fromY) < 5) return
+    if (!d.moved && narrow()) sliding.current = requestAnimationFrame(slide)
     d.moved = true
-    Object.assign(d, place(e, d))
+    pointer.current = { x: e.clientX, y: e.clientY }
+    carryTo(d)
+  }
+  // Put the carried note under the pointer, and let others watch it move a dozen or so times a second.
+  const carryTo = (d: NonNullable<typeof drag.current>) => {
+    const at = pointer.current
+    const rect = surface.current?.getBoundingClientRect()
+    if (!at || !rect) return
+    d.x = onBoard((at.x - d.dx - rect.left) / rect.width)
+    d.y = onBoard((at.y - d.dy - rect.top) / rect.height)
     setHeld({ id: d.id, x: d.x, y: d.y })
-    // Others watch it move, a dozen or so times a second.
     if (Date.now() - d.sent > 70) {
       d.sent = Date.now()
       board.move(d.id, d.x, d.y, false)
     }
   }
+  const slide = () => {
+    const d = drag.current
+    const f = frame.current
+    const at = pointer.current
+    if (!d || !f || !at) return
+    const box = f.getBoundingClientRect()
+    const edge = Math.min(56, box.width / 6)
+    const push = at.x < box.left + edge ? -(box.left + edge - at.x) : at.x > box.right - edge ? at.x - (box.right - edge) : 0
+    if (push) {
+      const before = f.scrollLeft
+      f.scrollLeft += Math.sign(push) * Math.min(14, 3 + Math.abs(push) / 4)
+      if (f.scrollLeft !== before) carryTo(d)
+    }
+    sliding.current = requestAnimationFrame(slide)
+  }
   const drop = () => {
     const d = drag.current
     if (!d) return
     drag.current = null
+    pointer.current = null
+    cancelAnimationFrame(sliding.current)
     if (!d.moved) return setReading(d.id)
     board.move(d.id, d.x, d.y, true)
     // Stay put until the server has caught up, so the note does not jump back for a moment.
@@ -279,12 +332,23 @@ export function Board() {
             <Icon.close />
           </button>
         </div>
-        <div className="board-frame">
+        {face === 'features' && (
+          <nav className="board-lane-tabs" aria-label="Lanes">
+            {LANES.map((l) => (
+              <button key={l.id} type="button" className={`${l.id} ${l.id === viewing ? 'on' : ''}`} aria-current={l.id === viewing} onClick={() => showLane(l.id)}>
+                <i />
+                {l.name}
+                <b>{inLane(l.id)}</b>
+              </button>
+            ))}
+          </nav>
+        )}
+        <div className={`board-frame ${held ? 'holding' : ''}`} ref={frame} onScroll={follow}>
           <div className={`board-surface ${face}`} ref={surface}>
             {face === 'features' && (
               <div className="board-lanes">
                 {LANES.map((l) => {
-                  const count = shown.filter((n) => laneAt(n.id === held?.id ? held.x : n.x).id === l.id).length
+                  const count = inLane(l.id)
                   return (
                     <div key={l.id} className={`${l.id} ${heldLane === l.id ? 'on' : ''}`}>
                       <header>
@@ -341,7 +405,7 @@ export function Board() {
             })}
           </div>
         </div>
-        <form className="board-new" onSubmit={submit}>
+        <form className={`board-new ${text.trim() ? 'drafting' : ''}`} onSubmit={submit}>
           <div className="board-pad" ref={pad} style={{ background: color }}>
             <RichPad key={`${face}-${sheet}`} placeholder={face === 'features' ? 'A feature to build, or one to take out…' : 'Anything at all…'} onChange={setText} onSubmit={submit} />
             <span className={text.length > MAX_NOTE_LENGTH ? 'over' : ''}>{MAX_NOTE_LENGTH - text.length}</span>
