@@ -1,4 +1,4 @@
-import { Client, type Room } from '@colyseus/sdk'
+import { Callbacks, Client, type Room } from '@colyseus/sdk'
 import { create } from 'zustand'
 import { QUIET_ZONES, SEATS, isBoard, roomById, seatById, standSpot, type BoardId, type BondWith, type Person, type Progress, type Seat, type TaskCategory, type TaskList, type TaskSession, type ZoneId } from '@guildhouse/shared'
 import { accessToken } from '../account'
@@ -321,6 +321,10 @@ function syncJukebox(state: any) {
 }
 
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((v, i) => v === b[i])
+const sameRecord = (a: Record<string, unknown>, b: Record<string, unknown>) => {
+  const keys = Object.keys(a)
+  return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k])
+}
 
 // Our own seat comes from the server, which is what stops two people taking the same chair.
 let ignoreSeatUntil = 0
@@ -365,10 +369,10 @@ function syncCall() {
   const patch: Partial<NetState> = {}
   if (s.inCall !== inCall) patch.inCall = inCall
   if (!sameList(s.call, call)) patch.call = call
-  if (JSON.stringify(s.taken) !== JSON.stringify(taken)) patch.taken = taken
-  if (JSON.stringify(s.ranks) !== JSON.stringify(ranks)) patch.ranks = ranks
-  if (JSON.stringify(s.streaks) !== JSON.stringify(streaks)) patch.streaks = streaks
-  if (JSON.stringify(s.statuses) !== JSON.stringify(statuses)) patch.statuses = statuses
+  if (!sameRecord(s.taken, taken)) patch.taken = taken
+  if (!sameRecord(s.ranks, ranks)) patch.ranks = ranks
+  if (!sameRecord(s.streaks, streaks)) patch.streaks = streaks
+  if (!sameRecord(s.statuses, statuses)) patch.statuses = statuses
   if (Object.keys(patch).length) useNet.setState(patch)
 }
 
@@ -506,6 +510,7 @@ function syncPlayers(state: any, selfId: string) {
 function disconnected(profile: Profile) {
   clearInterval(sendTimer)
   clearInterval(clockTimer)
+  clearInterval(recheckTimer)
   jukeKey = ''
   pomoKey = ''
   notesKey = ''
@@ -527,6 +532,49 @@ function disconnected(profile: Profile) {
       useGame.setState({ profile: null })
     }
   }, 3000)
+}
+
+// Most patches are just people walking, so rebuilding the board, garden, desks, timers and music on every
+// one is wasted work. Schema callbacks mark the section that actually changed and only that one is rebuilt;
+// every few seconds all of them are marked anyway, as a safety net.
+// A new shared collection in OfficeState needs a line in watchSections, or it only updates on that re-check.
+type Section = 'notes' | 'garden' | 'reservations' | 'pomodoros' | 'jukeboxes'
+const SECTIONS: Section[] = ['notes', 'garden', 'reservations', 'pomodoros', 'jukeboxes']
+const dirty = new Set<Section>(SECTIONS)
+const RECHECK_MS = 3000
+let recheckTimer: ReturnType<typeof setInterval> | undefined
+
+function watchSections(joined: Room<any>) {
+  const $ = Callbacks.get(joined) as any
+  const mark = (s: Section) => () => void dirty.add(s)
+  // Items coming and going in a collection, and any field changing on one of them.
+  const flat = (prop: string, s: Section) => {
+    $.onAdd(prop, (item: any) => {
+      dirty.add(s)
+      $.onChange(item, mark(s))
+    })
+    $.onRemove(prop, mark(s))
+  }
+  // The same, plus a collection inside each item (comments on a note, the queue of a jukebox).
+  const nested = (prop: string, inner: string, s: Section) => {
+    $.onAdd(prop, (item: any) => {
+      dirty.add(s)
+      $.onChange(item, mark(s))
+      $.onAdd(item, inner, (sub: any) => {
+        dirty.add(s)
+        $.onChange(sub, mark(s))
+      })
+      $.onRemove(item, inner, mark(s))
+    })
+    $.onRemove(prop, mark(s))
+  }
+  nested('notes', 'comments', 'notes')
+  nested('jukeboxes', 'queue', 'jukeboxes')
+  flat('garden', 'garden')
+  flat('desks', 'reservations')
+  flat('bookings', 'reservations')
+  flat('doors', 'reservations')
+  flat('pomodoros', 'pomodoros')
 }
 
 // Joins the shared office. If the server is unreachable the office still works solo and we keep retrying.
@@ -561,13 +609,17 @@ export async function connect(profile: Profile, code = ''): Promise<'online' | '
     const selfId = joined.sessionId
     useNet.setState({ status: 'online', selfId })
 
+    SECTIONS.forEach((s) => dirty.add(s))
+    watchSections(joined)
+    clearInterval(recheckTimer)
+    recheckTimer = setInterval(() => SECTIONS.forEach((s) => dirty.add(s)), RECHECK_MS)
     joined.onStateChange((state: any) => {
       syncPlayers(state, selfId)
-      syncJukebox(state)
-      syncPomodoro(state)
-      syncNotes(state)
-      syncReservations(state)
-      syncGarden(state)
+      if (dirty.delete('jukeboxes')) syncJukebox(state)
+      if (dirty.delete('pomodoros')) syncPomodoro(state)
+      if (dirty.delete('notes')) syncNotes(state)
+      if (dirty.delete('reservations')) syncReservations(state)
+      if (dirty.delete('garden')) syncGarden(state)
     })
     joined.onMessage('clock', (m: { t0: number; now: number }) => {
       clockOffset = m.now - (m.t0 + Date.now()) / 2
