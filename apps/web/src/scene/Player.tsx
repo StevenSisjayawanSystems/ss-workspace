@@ -8,7 +8,7 @@ import { requestSit, standUp, useNet } from '../net/net'
 import { useStats } from '../stats'
 import { Avatar } from './Avatar'
 import { Label } from './Label'
-import { WIZARD_HEIGHT } from './WizardModel'
+import { WIZARD_HEIGHT, seatType } from './WizardModel'
 import { glow } from './toon'
 
 const KEYS: Record<string, [number, number]> = {
@@ -22,7 +22,7 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
   const group = useRef<THREE.Group>(null!)
   const marker = useRef<THREE.Mesh>(null!)
   const moving = useRef(false)
-  const seated = useRef(false)
+  const seated = useRef('')
   const path = useRef<Point[]>([])
   const held = useRef(new Set<string>())
   const walkTarget = useGame((s) => s.walkTarget)
@@ -72,7 +72,7 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
     const len = Math.hypot(sx, sy)
     const game = useGame.getState()
     const seat = seatById(game.seat ?? '')
-    seated.current = !!seat
+    seated.current = seatType(seat?.id)
     if (seat && len > 0.12) standUp()
     if (len > 0.12 && game.pendingSeat) useGame.setState({ pendingSeat: null })
     let dx = 0
@@ -120,9 +120,8 @@ export function Player({ name, look }: { name: string; look: AvatarLook }) {
       requestSit(game.pendingSeat)
       useGame.setState({ pendingSeat: null })
     }
-    // Cushions sit on the ground, so the sitter eases down further than on a chair.
-    const drop = seatById(useGame.getState().seat ?? '')?.drop ?? 0
-    group.current.position.set(player.x, THREE.MathUtils.damp(group.current.position.y, drop, 9, dt), player.z)
+    // WizardModel lifts or lowers her onto the seat itself.
+    group.current.position.set(player.x, 0, player.z)
     group.current.rotation.y = player.facing
 
     const zone = zoneAt(Math.round(player.x), Math.round(player.z))

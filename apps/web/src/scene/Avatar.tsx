@@ -99,12 +99,12 @@ function EmoteBurst({ emotes, y }: { emotes: EmoteItem[]; y: number }) {
 }
 
 // The wizard character from assets/characters/wizard, loaded as a skinned glTF. Faces +z; the parent group places and turns it.
-// `look` tints her skin, cloak, trim and hair. `seated` is accepted but she has no sitting pose yet.
-export function Avatar({ look = DEFAULT_LOOK, name, moving, bubble, status, streak, emotes = [] }: { look?: AvatarLook; name?: string; status?: string; streak?: number; moving: RefObject<boolean>; seated?: RefObject<boolean>; bubble?: string; emotes?: EmoteItem[] }) {
+// `look` tints her skin, cloak, trim and hair. `seated` holds the furniture type of her seat ('' when standing).
+export function Avatar({ look = DEFAULT_LOOK, name, moving, seated, bubble, status, streak, emotes = [] }: { look?: AvatarLook; name?: string; status?: string; streak?: number; moving: RefObject<boolean>; seated?: RefObject<string>; bubble?: string; emotes?: EmoteItem[] }) {
   return (
     <group>
       <Suspense fallback={null}>
-        <WizardModel look={look} moving={moving} />
+        <WizardModel look={look} moving={moving} seat={seated} />
       </Suspense>
       {name && <Label text={status ? `${name} · ${status}` : name} streak={streak} y={-0.18} placement="below" />}
       {bubble && <Label text={bubble} y={WIZARD_HEIGHT + 0.25} bubble />}
