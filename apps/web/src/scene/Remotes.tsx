@@ -1,17 +1,16 @@
 import { useRef, useState } from 'react'
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
-import { seatById } from '@guildhouse/shared'
 import { useGame } from '../game'
 import { remotes, useNet } from '../net/net'
 import { Avatar } from './Avatar'
 import { Label } from './Label'
-import { WIZARD_HEIGHT } from './WizardModel'
+import { WIZARD_HEIGHT, seatType } from './WizardModel'
 
 function RemoteAvatar({ id }: { id: string }) {
   const group = useRef<THREE.Group>(null!)
   const moving = useRef(false)
-  const seated = useRef(false)
+  const seated = useRef('')
   const bubble = useNet((s) => s.bubbles[id]?.text)
   const emotes = useNet((s) => s.emotes[id])
   const status = useNet((s) => s.statuses[id])
@@ -33,9 +32,10 @@ function RemoteAvatar({ id }: { id: string }) {
     }
     const turn = Math.atan2(Math.sin(r.tfacing - r.facing), Math.cos(r.tfacing - r.facing))
     r.facing += turn * Math.min(1, dt * 12)
-    seated.current = !!r.seat
+    seated.current = seatType(r.seat)
     moving.current = !r.seat && (r.moving || gap > 0.08)
-    group.current.position.set(r.x, THREE.MathUtils.damp(group.current.position.y, seatById(r.seat)?.drop ?? 0, 9, dt), r.z)
+    // WizardModel lifts or lowers her onto the seat itself.
+    group.current.position.set(r.x, 0, r.z)
     group.current.rotation.y = r.facing
   })
 
